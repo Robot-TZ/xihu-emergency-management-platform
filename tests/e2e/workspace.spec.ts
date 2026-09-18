@@ -11,15 +11,22 @@ test("guest data persists across refresh", async ({ page }) => {
 
 test("workspace navigation has core modules", async ({ page }) => {
   await page.goto("/");
-  for (const name of ["项目总览", "事件管理", "指令任务", "风险普查", "操作日志"]) {
+  for (const name of ["项目介绍", "SOP 流程", "事件管理", "指令任务", "风险普查", "操作日志"]) {
     await expect(page.getByRole("button", { name: new RegExp(name) })).toBeVisible();
   }
 });
 
 test("invalid saved data falls back safely", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("xihu-emergency-stage-one-v1", "not-json"));
+  await page.addInitScript(() => localStorage.setItem("xihu-emergency-platform-v1", "not-json"));
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "一个入口，贯通应急处置闭环" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "西湖区应急管理综合平台" })).toBeVisible();
+});
+
+test("SOP page shows the response loop", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /SOP 流程/ }).click();
+  await expect(page.getByRole("heading", { name: "应急处置 SOP" })).toBeVisible();
+  await expect(page.getByText("未达到处置目标 → 退回核查、补充指令或重新调度")).toBeVisible();
 });
 
 test("task create, update and delete are persisted", async ({ page }) => {
