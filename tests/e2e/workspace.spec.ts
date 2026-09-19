@@ -23,7 +23,8 @@ test("workspace exposes the tender-aligned product modules", async ({ page }) =>
 test("command tasks can be created, advanced and deleted", async ({ page }) => {
   await page.getByRole("button", { name: /指挥调度/ }).click();
   await page.getByLabel("任务", { exact: true }).fill("巡查测试任务");
-  await page.getByLabel("接收对象").fill("测试工作组");
+  await page.getByLabel("接收人").selectOption("");
+  await page.getByLabel("接收组织").selectOption("");
   await page.getByRole("button", { name: "下达指令" }).click();
   let row = page.getByRole("row").filter({ hasText: "巡查测试任务" });
   await expect(row).toContainText("待查阅");

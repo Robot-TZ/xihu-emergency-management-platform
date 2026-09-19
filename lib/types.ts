@@ -6,6 +6,39 @@ export type Profile = {
   role: Role;
   organization?: string;
   job_title?: string;
+  active: boolean;
+  created_at: string;
+};
+export type OrganizationType = "district" | "department" | "town" | "community" | "workgroup";
+export type Organization = {
+  id: string;
+  parent_id?: string | null;
+  name: string;
+  code: string;
+  org_type: OrganizationType;
+  area: string;
+  active: boolean;
+  created_at: string;
+};
+export type OrganizationMember = {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  position: string;
+  membership_role: "member" | "manager";
+  is_primary: boolean;
+  active: boolean;
+  created_at: string;
+};
+export type TeamInvite = {
+  id: string;
+  label: string;
+  role: "member" | "admin";
+  active: boolean;
+  max_uses: number;
+  uses: number;
+  expires_at?: string | null;
+  organization_id?: string | null;
   created_at: string;
 };
 export type EventRecord = {
@@ -26,6 +59,8 @@ export type TaskRecord = {
   event_id?: string | null;
   title: string;
   assignee: string;
+  assignee_user_id?: string | null;
+  assignee_organization_id?: string | null;
   resource: string;
   status: "待查阅" | "已读" | "已反馈" | "已完成";
   due_minutes: number;
@@ -50,6 +85,8 @@ export type RiskRecord = {
   status: "待派单" | "待确认" | "退回核查" | "已回写";
   note?: string;
   assigned_org?: string;
+  assignee_user_id?: string | null;
+  assignee_organization_id?: string | null;
   writeback_message?: string;
   created_at: string;
 };
