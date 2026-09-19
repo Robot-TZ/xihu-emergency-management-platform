@@ -45,3 +45,13 @@ test("monitoring demo is explicitly labeled and converts an alert", async ({ pag
   await card.getByRole("button", { name: "转入事件研判" }).click();
   await expect(page.getByRole("heading", { name: "预案中心", exact: true })).toBeVisible();
 });
+
+test("professional plan center explains scoring and starts versioned task templates", async ({ page }) => {
+  await page.getByRole("button", { name: "初始化产品数据" }).click();
+  await page.getByRole("button", { name: /预案中心/ }).click();
+  await expect(page.getByText("事件类型匹配：+50")).toBeVisible();
+  await expect(page.getByText("启动后将生成 3 条责任任务").first()).toBeVisible();
+  await page.getByRole("button", { name: "人工确认并启动" }).first().click();
+  await expect(page.getByText("已启动《西湖区暴雨内涝应急处置预案》V1，并按模板生成 3 条指令。")).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "排涝作业" }).filter({ hasText: "属地应急队" })).toBeVisible();
+});

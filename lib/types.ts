@@ -51,6 +51,8 @@ export type EventRecord = {
   description: string;
   status: string;
   plan_id?: string | null;
+  emergency_plan_id?: string | null;
+  plan_version_id?: string | null;
   created_at: string;
 };
 export type TaskRecord = {
@@ -66,6 +68,8 @@ export type TaskRecord = {
   due_minutes: number;
   feedback?: string;
   plan_id?: string | null;
+  emergency_plan_id?: string | null;
+  plan_version_id?: string | null;
   channel?: string;
   read_at?: string | null;
   feedback_at?: string | null;
@@ -95,6 +99,51 @@ export type ActivityLog = {
   action: string;
   entity_type: string;
   detail: Record<string, unknown>;
+  created_at: string;
+};
+
+export type EmergencyPlanStatus = "draft" | "review" | "published" | "retired";
+export type PlanVersionStatus = "draft" | "review" | "published" | "archived";
+
+export type EmergencyPlan = {
+  id: string;
+  user_id?: string;
+  code: string;
+  title: string;
+  event_type: string;
+  area: string;
+  status: EmergencyPlanStatus;
+  current_version_id?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type PlanVersion = {
+  id: string;
+  plan_id: string;
+  version_no: number;
+  status: PlanVersionStatus;
+  summary: string;
+  content: string;
+  response_levels: string[];
+  keywords: string[];
+  type_weight: number;
+  level_weight: number;
+  keyword_weight: number;
+  submitted_at?: string | null;
+  published_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type PlanTaskTemplate = {
+  id: string;
+  version_id: string;
+  title: string;
+  assignee_role: string;
+  resource_requirement: string;
+  due_minutes: number;
+  sort_order: number;
   created_at: string;
 };
 

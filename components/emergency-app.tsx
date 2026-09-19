@@ -5,13 +5,16 @@ import type { User } from "@supabase/supabase-js";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/client";
 import { AuthPanel } from "./auth-panel";
 import { demoEvent, demoRisks, demoTasks } from "@/lib/demo-data";
+import { demoPlans, demoPlanTaskTemplates, demoPlanVersions } from "@/lib/plan-demo";
+import { parseTaskTemplates } from "@/lib/plan-engine";
 import { demoOperationalRecords, moduleMeta, productPages, type ProductPage } from "@/lib/product-catalog";
-import type { ActivityLog, EventRecord, OperationalRecord, Organization, OrganizationMember, ProductModule, Profile, RiskRecord, Role, TaskRecord, TeamInvite } from "@/lib/types";
-import { CityPage, DataPage, DutyPage, InventoryPage, LogsPage, OverviewPage, PlansPage, PortalPage, ResourcesPage, TyphoonPage } from "./product-pages";
+import type { ActivityLog, EmergencyPlan, EventRecord, OperationalRecord, Organization, OrganizationMember, PlanTaskTemplate, PlanVersion, ProductModule, Profile, RiskRecord, Role, TaskRecord, TeamInvite } from "@/lib/types";
+import { CityPage, DataPage, DutyPage, InventoryPage, LogsPage, OverviewPage, PortalPage, ResourcesPage, TyphoonPage } from "./product-pages";
 import { AdminPage, CommandPage, RisksPage } from "./workflow-pages";
+import { PlanCenterPage, type PlanLifecycleAction } from "./plan-center";
 
-export type ProductSnapshot = { events: EventRecord[]; tasks: TaskRecord[]; risks: RiskRecord[]; logs: ActivityLog[]; records: OperationalRecord[] };
-const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [] };
+export type ProductSnapshot = { events: EventRecord[]; tasks: TaskRecord[]; risks: RiskRecord[]; logs: ActivityLog[]; records: OperationalRecord[]; plans: EmergencyPlan[]; planVersions: PlanVersion[]; planTemplates: PlanTaskTemplate[] };
+const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [], plans: [], planVersions: [], planTemplates: [] };
 const LOCAL_KEY = "xihu-emergency-product-v2";
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
@@ -34,9 +37,15 @@ function isSnapshot(value: unknown): value is ProductSnapshot {
 function loadLocal(): ProductSnapshot {
   try {
     const parsed = JSON.parse(localStorage.getItem(LOCAL_KEY) || "null") as unknown;
-    if (isSnapshot(parsed)) return { ...parsed, records: Array.isArray(parsed.records) ? parsed.records : demoOperationalRecords };
+    if (isSnapshot(parsed)) return {
+      ...parsed,
+      records: Array.isArray(parsed.records) ? parsed.records : demoOperationalRecords,
+      plans: Array.isArray(parsed.plans) ? parsed.plans : demoPlans,
+      planVersions: Array.isArray(parsed.planVersions) ? parsed.planVersions : demoPlanVersions,
+      planTemplates: Array.isArray(parsed.planTemplates) ? parsed.planTemplates : demoPlanTaskTemplates,
+    };
   } catch { /* corrupted visitor data falls back to safe defaults */ }
-  return { ...empty, records: demoOperationalRecords };
+  return { ...empty, records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates };
 }
 function withLocalLog(data: ProductSnapshot, action: string, entity_type: string, detail: Record<string, unknown> = {}): ProductSnapshot {
   return { ...data, logs: [{ id: uid(), action, entity_type, detail, created_at: now() }, ...data.logs] };
@@ -71,19 +80,22 @@ export function EmergencyApp() {
     const currentActive = profileResult.data?.active !== false;
     setRole(currentRole);
     setAccountActive(currentActive);
-    const [events, tasks, risks, logs, records, orgs, orgMembers, visibleProfiles] = await Promise.all([
+    const [events, tasks, risks, logs, records, plans, planVersions, planTemplates, orgs, orgMembers, visibleProfiles] = await Promise.all([
       supabase.from("events").select("*").order("created_at", { ascending: false }),
       supabase.from("tasks").select("*").order("created_at", { ascending: false }),
       supabase.from("risk_records").select("*").order("created_at", { ascending: false }),
       supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("operational_records").select("*").order("created_at", { ascending: false }),
+      supabase.from("emergency_plans").select("*").order("updated_at", { ascending: false }),
+      supabase.from("plan_versions").select("*").order("version_no", { ascending: false }),
+      supabase.from("plan_task_templates").select("*").order("sort_order"),
       supabase.from("organizations").select("*").order("name"),
       supabase.from("organization_members").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("id,email,display_name,role,organization,job_title,active,created_at").order("created_at", { ascending: false }),
     ]);
-    const failure = [events, tasks, risks, logs, records, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
+    const failure = [events, tasks, risks, logs, records, plans, planVersions, planTemplates, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
     if (failure) setNotice("数据读取失败：" + failure.message);
-    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[] });
+    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[], plans: (plans.data || []) as EmergencyPlan[], planVersions: (planVersions.data || []) as PlanVersion[], planTemplates: (planTemplates.data || []) as PlanTaskTemplate[] });
     setOrganizations((orgs.data || []) as Organization[]);
     setMemberships((orgMembers.data || []) as OrganizationMember[]);
     setProfiles((visibleProfiles.data || []) as Profile[]);
@@ -109,7 +121,7 @@ export function EmergencyApp() {
 
   async function seed() {
     if (!requireWrite()) return;
-    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
+    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
     const supabase = createClient();
     if (!data.events.length) await supabase.from("events").insert({ ...forInsert(demoEvent), user_id: user.id });
     if (!data.records.length) await supabase.from("operational_records").insert(demoOperationalRecords.map((record) => ({ ...forInsert(record), user_id: user.id })));
@@ -159,19 +171,96 @@ export function EmergencyApp() {
     if (!user) setData((current) => withLocalLog({ ...current, tasks: current.tasks.filter((item) => item.id !== taskId) }, "删除指令任务", "task"));
     else { const { error } = await createClient().from("tasks").delete().eq("id", taskId); if (error) return setNotice(error.message); await audit("删除指令任务", "task", taskId); await load(); }
   }
-  async function startPlan(event: EventRecord, plan: OperationalRecord) {
+  async function addPlan(form: FormData) {
     if (!requireWrite()) return;
-    const titles = Array.isArray(plan.details.tasks) ? plan.details.tasks : ["事件核查", "资源调度", "现场处置"];
-    const tasks = titles.map((title, index): TaskRecord => ({ id: uid(), event_id: event.id, plan_id: plan.id, title, assignee: ["属地应急队", "物资保障组", "现场处置组"][index] || "应急处置组", resource: index === 1 ? "按预案调配" : "", channel: user ? "平台内" : "平台内（模拟发送）", status: "待查阅", due_minutes: 30, created_at: now() }));
-    if (!user) setData((current) => withLocalLog({ ...current, events: current.events.map((item) => item.id === event.id ? { ...item, plan_id: plan.id, status: "处置中" } : item), tasks: [...tasks, ...current.tasks] }, "启动预案并生成指令", "plan", { plan: plan.title }));
+    const typeWeight = Number(form.get("typeWeight") || 50);
+    const levelWeight = Number(form.get("levelWeight") || 30);
+    const keywordWeight = Number(form.get("keywordWeight") || 20);
+    if (typeWeight + levelWeight + keywordWeight !== 100) return setNotice("三项匹配权重之和必须为 100。");
+    const createdAt = now(); const planId = uid(); const versionId = uid();
+    const plan: EmergencyPlan = { id: planId, code: String(form.get("code")).trim().toUpperCase(), title: String(form.get("title")), event_type: String(form.get("eventType")), area: String(form.get("area") || "全区"), status: "draft", current_version_id: null, created_at: createdAt, updated_at: createdAt };
+    const version: PlanVersion = { id: versionId, plan_id: planId, version_no: 1, status: "draft", summary: String(form.get("summary")), content: String(form.get("content")), response_levels: String(form.get("levels") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), keywords: String(form.get("keywords") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), type_weight: typeWeight, level_weight: levelWeight, keyword_weight: keywordWeight, created_at: createdAt, updated_at: createdAt };
+    const templates = parseTaskTemplates(String(form.get("tasks") || ""), versionId, uid, createdAt);
+    if (!templates.length) return setNotice("至少需要一条任务模板。");
+    if (!user) {
+      setData((current) => withLocalLog({ ...current, plans: [plan, ...current.plans], planVersions: [version, ...current.planVersions], planTemplates: [...templates, ...current.planTemplates] }, "创建预案草稿", "emergency_plan", { code: plan.code }));
+    } else {
+      const supabase = createClient();
+      const planResult = await supabase.from("emergency_plans").insert({ ...forInsert(plan), user_id: user.id }).select("id").single();
+      if (planResult.error) return setNotice(planResult.error.message);
+      const remotePlanId = planResult.data.id; const remoteVersionId = uid();
+      const versionResult = await supabase.from("plan_versions").insert({ ...forInsert({ ...version, id: remoteVersionId, plan_id: remotePlanId }) }).select("id").single();
+      if (versionResult.error) { await supabase.from("emergency_plans").delete().eq("id", remotePlanId); return setNotice(versionResult.error.message); }
+      const templateResult = await supabase.from("plan_task_templates").insert(templates.map((item) => ({ ...forInsert(item), version_id: versionResult.data.id })));
+      if (templateResult.error) { await supabase.from("emergency_plans").delete().eq("id", remotePlanId); return setNotice(templateResult.error.message); }
+      await audit("创建预案草稿", "emergency_plan", remotePlanId, { code: plan.code }); await load();
+    }
+    setNotice("预案草稿、V1 版本和任务模板已创建。");
+  }
+
+  async function transitionPlan(plan: EmergencyPlan, version: PlanVersion, action: PlanLifecycleAction) {
+    if (!requireWrite()) return;
+    if ((action === "publish" || action === "retire") && role !== "admin") return setNotice("审核发布和作废只允许管理员操作。");
+    const versionTemplates = data.planTemplates.filter((item) => item.version_id === version.id).sort((a, b) => a.sort_order - b.sort_order);
+    const createdAt = now();
+    if (!user) {
+      setData((current) => {
+        if (action === "copy") {
+          const newVersionId = uid();
+          const newVersion: PlanVersion = { ...version, id: newVersionId, version_no: Math.max(...current.planVersions.filter((item) => item.plan_id === plan.id).map((item) => item.version_no), 0) + 1, status: "draft", submitted_at: null, published_at: null, created_at: createdAt, updated_at: createdAt };
+          const newTemplates = versionTemplates.map((item, index) => ({ ...item, id: uid(), version_id: newVersionId, sort_order: index + 1, created_at: createdAt }));
+          return withLocalLog({ ...current, planVersions: [newVersion, ...current.planVersions], planTemplates: [...newTemplates, ...current.planTemplates] }, "复制预案新版本", "plan_version", { version: newVersion.version_no });
+        }
+        const nextVersionStatus = action === "submit" ? "review" : action === "publish" ? "published" : version.status;
+        const nextPlanStatus = action === "submit" && !plan.current_version_id ? "review" : action === "publish" ? "published" : action === "retire" ? "retired" : plan.status;
+        return withLocalLog({ ...current,
+          plans: current.plans.map((item) => item.id === plan.id ? { ...item, status: nextPlanStatus, current_version_id: action === "publish" ? version.id : item.current_version_id, updated_at: createdAt } : item),
+          planVersions: current.planVersions.map((item) => item.plan_id === plan.id && action === "publish" && item.status === "published" ? { ...item, status: "archived" } : item.id === version.id ? { ...item, status: nextVersionStatus, submitted_at: action === "submit" ? createdAt : item.submitted_at, published_at: action === "publish" ? createdAt : item.published_at, updated_at: createdAt } : item),
+        }, action === "submit" ? "预案版本送审" : action === "publish" ? "审核发布预案" : "作废预案", "emergency_plan");
+      });
+    } else {
+      const supabase = createClient();
+      if (action === "copy") {
+        const nextVersionNo = Math.max(...data.planVersions.filter((item) => item.plan_id === plan.id).map((item) => item.version_no), 0) + 1;
+        const copied = await supabase.from("plan_versions").insert({ plan_id: plan.id, version_no: nextVersionNo, status: "draft", summary: version.summary, content: version.content, response_levels: version.response_levels, keywords: version.keywords, type_weight: version.type_weight, level_weight: version.level_weight, keyword_weight: version.keyword_weight }).select("id").single();
+        if (copied.error) return setNotice(copied.error.message);
+        const copiedTasks = await supabase.from("plan_task_templates").insert(versionTemplates.map((item) => ({ version_id: copied.data.id, title: item.title, assignee_role: item.assignee_role, resource_requirement: item.resource_requirement, due_minutes: item.due_minutes, sort_order: item.sort_order })));
+        if (copiedTasks.error) return setNotice(copiedTasks.error.message);
+      } else if (action === "submit") {
+        const result = await supabase.from("plan_versions").update({ status: "review", submitted_at: createdAt, updated_at: createdAt }).eq("id", version.id); if (result.error) return setNotice(result.error.message);
+        if (!plan.current_version_id) await supabase.from("emergency_plans").update({ status: "review", updated_at: createdAt }).eq("id", plan.id);
+      } else if (action === "publish") {
+        const archive = await supabase.from("plan_versions").update({ status: "archived", updated_at: createdAt }).eq("plan_id", plan.id).eq("status", "published"); if (archive.error) return setNotice(archive.error.message);
+        const publish = await supabase.from("plan_versions").update({ status: "published", published_at: createdAt, updated_at: createdAt }).eq("id", version.id); if (publish.error) return setNotice(publish.error.message);
+        const updatePlan = await supabase.from("emergency_plans").update({ status: "published", current_version_id: version.id, updated_at: createdAt }).eq("id", plan.id); if (updatePlan.error) return setNotice(updatePlan.error.message);
+      } else {
+        const result = await supabase.from("emergency_plans").update({ status: "retired", updated_at: createdAt }).eq("id", plan.id); if (result.error) return setNotice(result.error.message);
+      }
+      await audit(action === "submit" ? "预案版本送审" : action === "publish" ? "审核发布预案" : action === "copy" ? "复制预案新版本" : "作废预案", "emergency_plan", plan.id, { version: version.version_no }); await load();
+    }
+    setNotice(action === "submit" ? "已送审，等待管理员审核。" : action === "publish" ? "新版本已发布，旧版本已归档。" : action === "copy" ? "已复制为新草稿版本。" : "预案已作废。");
+  }
+
+  async function removePlan(plan: EmergencyPlan) {
+    if (!requireWrite()) return;
+    if (!user) setData((current) => { const versionIds = current.planVersions.filter((item) => item.plan_id === plan.id).map((item) => item.id); return withLocalLog({ ...current, plans: current.plans.filter((item) => item.id !== plan.id), planVersions: current.planVersions.filter((item) => item.plan_id !== plan.id), planTemplates: current.planTemplates.filter((item) => !versionIds.includes(item.version_id)) }, "删除预案", "emergency_plan"); });
+    else { const { error } = await createClient().from("emergency_plans").delete().eq("id", plan.id); if (error) return setNotice(error.message); await audit("删除预案", "emergency_plan", plan.id); await load(); }
+    setNotice("预案及其版本和任务模板已删除。");
+  }
+
+  async function startPlan(event: EventRecord, plan: EmergencyPlan, version: PlanVersion, templates: PlanTaskTemplate[]) {
+    if (!requireWrite()) return;
+    const tasks = templates.map((template): TaskRecord => ({ id: uid(), event_id: event.id, emergency_plan_id: plan.id, plan_version_id: version.id, title: template.title, assignee: template.assignee_role, resource: template.resource_requirement, channel: user ? "平台内" : "平台内（模拟发送）", status: "待查阅", due_minutes: template.due_minutes, created_at: now() }));
+    if (!user) setData((current) => withLocalLog({ ...current, events: current.events.map((item) => item.id === event.id ? { ...item, emergency_plan_id: plan.id, plan_version_id: version.id, status: "处置中" } : item), tasks: [...tasks, ...current.tasks] }, "启动预案版本并生成指令", "emergency_plan", { plan: plan.title, version: version.version_no }));
     else {
       const supabase = createClient();
       const { error } = await supabase.from("tasks").insert(tasks.map((task) => ({ ...forInsert(task), user_id: user.id })));
       if (error) return setNotice(error.message);
-      await supabase.from("events").update({ plan_id: plan.id, status: "处置中", updated_at: now() }).eq("id", event.id);
-      await audit("启动预案并生成指令", "plan", plan.id, { event: event.id }); await load();
+      const eventUpdate = await supabase.from("events").update({ emergency_plan_id: plan.id, plan_version_id: version.id, status: "处置中", updated_at: now() }).eq("id", event.id);
+      if (eventUpdate.error) return setNotice(eventUpdate.error.message);
+      await audit("启动预案版本并生成指令", "emergency_plan", plan.id, { event: event.id, version: version.version_no }); await load();
     }
-    setPage("command"); setNotice(`已启动《${plan.title}》并生成 ${tasks.length} 条指令。`);
+    setPage("command"); setNotice(`已启动《${plan.title}》V${version.version_no}，并按模板生成 ${tasks.length} 条指令。`);
   }
 
   async function addRisk(form: FormData) {
@@ -240,7 +329,7 @@ export function EmergencyApp() {
 
   function exportData() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })); a.download = `西湖应急产品数据-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); }
   function exportRisks() { const rows = data.risks.map((item) => [item.name, item.area, item.record_type, item.source, item.change_type, item.old_value, item.new_value, item.status, item.assigned_org || ""]); const csv = "\uFEFF" + [["对象", "区域", "类型", "来源", "差异", "原值", "新值", "状态", "承办机构"], ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = "风险普查数据.csv"; a.click(); URL.revokeObjectURL(a.href); }
-  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...parsed, records: parsed.records || [] }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
+  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
   async function signOut() { if (user) await createClient().auth.signOut(); setUser(null); setRole("member"); await load(); }
 
   const stats = useMemo(() => ({ events: data.events.length, executing: data.tasks.filter((item) => item.status !== "已完成").length, resources: data.records.filter((item) => item.module === "resources").length, alerts: data.records.filter((item) => ["monitoring", "city_safety"].includes(item.module) && ["超警", "待处置", "预警"].includes(item.status)).length }), [data]);
@@ -250,7 +339,7 @@ export function EmergencyApp() {
   return <div className="shell"><aside><div className="brand"><span>湖</span><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => setPage(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本机持久化"}</b><small>{user?.email || "访客模式"}</small></div></aside><main><header><span>西湖区应急管理综合平台 / {productPages.find((item) => item.key === page)?.label}</span><div className="actions"><span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${role}` : "本地产品体验"}</span>{user ? <button onClick={signOut}>退出</button> : <button onClick={() => setShowAuth(!showAuth)}>登录</button>}</div></header><div className="workspace">{showAuth && !user && <AuthPanel onDone={() => { setShowAuth(false); void load(); }} />}{notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>关闭</button></div>}
     {page === "overview" && <OverviewPage stats={stats} data={data} role={accountActive ? role : "viewer"} onSeed={seed} onExport={exportData} onImport={() => importRef.current?.click()} importRef={importRef} importData={importData} />}
     {page === "portal" && <PortalPage data={data} role={role} />}{page === "typhoon" && <TyphoonPage {...common} onCreateEvent={createEventFromAlert} />}
-    {page === "plans" && <PlansPage records={data.records} events={data.events} writable={writable} onAdd={addRecord} onDelete={removeRecord} onStart={startPlan} />}
+    {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}
     {page === "command" && <CommandPage currentUserId={user?.id} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} />}
     {page === "resources" && <ResourcesPage {...common} />}{page === "inventory" && <InventoryPage {...common} />}
     {page === "risks" && <RisksPage risks={data.risks} profiles={profiles} organizations={organizations} writable={writable} onAdd={addRisk} onProgress={progressRisk} onDelete={removeRisk} onExport={exportRisks} />}
