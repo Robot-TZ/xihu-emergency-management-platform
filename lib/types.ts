@@ -4,6 +4,8 @@ export type Profile = {
   email?: string | null;
   display_name?: string | null;
   role: Role;
+  organization?: string;
+  job_title?: string;
   created_at: string;
 };
 export type EventRecord = {
@@ -15,6 +17,7 @@ export type EventRecord = {
   happened_at: string;
   description: string;
   status: string;
+  plan_id?: string | null;
   created_at: string;
 };
 export type TaskRecord = {
@@ -27,6 +30,11 @@ export type TaskRecord = {
   status: "待查阅" | "已读" | "已反馈" | "已完成";
   due_minutes: number;
   feedback?: string;
+  plan_id?: string | null;
+  channel?: string;
+  read_at?: string | null;
+  feedback_at?: string | null;
+  completed_at?: string | null;
   created_at: string;
 };
 export type RiskRecord = {
@@ -41,6 +49,8 @@ export type RiskRecord = {
   new_value: string;
   status: "待派单" | "待确认" | "退回核查" | "已回写";
   note?: string;
+  assigned_org?: string;
+  writeback_message?: string;
   created_at: string;
 };
 export type ActivityLog = {
@@ -49,4 +59,28 @@ export type ActivityLog = {
   entity_type: string;
   detail: Record<string, unknown>;
   created_at: string;
+};
+
+export type ProductModule =
+  | "plans" | "resources" | "inventory" | "duty" | "monitoring"
+  | "city_safety" | "reviews" | "organizations" | "integrations"
+  | "announcements";
+
+export type SourceMode = "real" | "simulated" | "external";
+
+export type OperationalRecord = {
+  id: string;
+  user_id?: string;
+  module: ProductModule;
+  record_type: string;
+  title: string;
+  status: string;
+  area: string;
+  owner_org: string;
+  summary: string;
+  source_mode: SourceMode;
+  details: Record<string, string | number | boolean | string[] | null>;
+  due_at?: string | null;
+  created_at: string;
+  updated_at?: string;
 };
