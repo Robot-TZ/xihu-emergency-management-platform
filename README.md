@@ -22,7 +22,7 @@
 - 台汛监测与城市安全设备预警体验，模拟数据显著标识；
 - 浙政钉、IRS、数据仓、短信、语音、视频、物联网和气象接入台账。
 
-线上地址：<https://xihu-emergency-management-platform.vercel.app>
+线上地址：<https://xihuresponse.top>
 
 ## 二、使用介绍
 
