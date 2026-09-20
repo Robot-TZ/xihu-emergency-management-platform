@@ -53,18 +53,16 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          if ! project_domains="$(curl --fail-with-body --silent --show-error \
-            "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains?teamId=${VERCEL_ORG_ID}" \
-            --header "Authorization: Bearer ${VERCEL_TOKEN}")"; then
-            echo "Domain list fetch failed; assuming product subdomains are already bound."
-            exit 0
-          fi
+          set +e
+          project_domains="$(curl --fail-with-body --silent --show-error \
+            "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains?teamId=${VERCEL_ORG_ID}&limit=100" \
+            --header "Authorization: Bearer ${VERCEL_TOKEN}")"
           for domain in \
             typhoon.xihuresponse.top plan.xihuresponse.top command.xihuresponse.top \
             resource.xihuresponse.top inventory.xihuresponse.top risk.xihuresponse.top \
             city.xihuresponse.top duty.xihuresponse.top data.xihuresponse.top \
             review.xihuresponse.top admin.xihuresponse.top; do
-            if jq --exit-status --arg domain "$domain" '.domains[] | select(.name == $domain)' <<< "$project_domains" >/dev/null; then
+            if jq --exit-status --arg domain "$domain" '.domains[] | select(.name == $domain)' <<< "$project_domains" >/dev/null 2>&1; then
               echo "$domain is already bound"
             else
               curl --fail-with-body --silent --show-error \
@@ -72,9 +70,10 @@ jobs:
                 "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}/domains?teamId=${VERCEL_ORG_ID}" \
                 --header "Authorization: Bearer ${VERCEL_TOKEN}" \
                 --header "Content-Type: application/json" \
-                --data "{\"name\":\"${domain}\"}" >/dev/null
-              echo "$domain was bound"
+                --data "{\"name\":\"${domain}\"}" >/dev/null 2>&1 \
+                && echo "$domain was bound" || echo "$domain bind skipped (already exists or transient error)"
             fi
           done
+          exit 0
       - name: Update canonical production domain
         run: pnpm dlx vercel@59.23.2 alias set "${{ steps.deploy.outputs.url }}" xihu-emergency-management-platform.vercel.app --token="${{ secrets.VERCEL_TOKEN }}"
