@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient, hasSupabaseConfig } from "@/lib/supabase/client";
-import { AuthPanel } from "./auth-panel";
+import { urlForPage } from "@/lib/product-routing";
 import { demoEvent, demoRisks, demoTasks } from "@/lib/demo-data";
 import { demoPlans, demoPlanTaskTemplates, demoPlanVersions } from "@/lib/plan-demo";
 import { parseTaskTemplates } from "@/lib/plan-engine";
@@ -86,8 +86,8 @@ function withLocalLog(data: ProductSnapshot, action: string, entity_type: string
   return { ...data, logs: [{ id: uid(), action, entity_type, detail, created_at: now() }, ...data.logs] };
 }
 
-export function EmergencyApp() {
-  const [page, setPage] = useState<ProductPage>("overview");
+export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }: { initialPage?: ProductPage; allowGuestDemo?: boolean }) {
+  const [page, setPage] = useState<ProductPage>(initialPage);
   const [data, setData] = useState<ProductSnapshot>(empty);
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role>("member");
@@ -99,16 +99,18 @@ export function EmergencyApp() {
   const [newInviteCode, setNewInviteCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
-  const [showAuth, setShowAuth] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    if (!hasSupabaseConfig()) { setData(loadLocal()); setLoading(false); return; }
+    if (!hasSupabaseConfig()) { if (allowGuestDemo) setData(loadLocal()); setLoading(false); return; }
     const supabase = createClient();
     const { data: auth } = await supabase.auth.getUser();
     const current = auth.user;
     setUser(current);
-    if (!current) { setData(loadLocal()); setRole("member"); setAccountActive(true); setProfiles([]); setOrganizations([]); setMemberships([]); setInvites([]); setLoading(false); return; }
+    if (!current) {
+      if (!allowGuestDemo) { window.location.assign(urlForPage("portal", window.location.hostname)); return; }
+      setData(loadLocal()); setRole("member"); setAccountActive(true); setProfiles([]); setOrganizations([]); setMemberships([]); setInvites([]); setLoading(false); return;
+    }
     const profileResult = await supabase.from("profiles").select("id,email,display_name,role,organization,job_title,active,created_at").eq("id", current.id).maybeSingle();
     if (!profileResult.data) await supabase.from("profiles").insert({ id: current.id, email: current.email, role: "viewer" });
     const currentRole = (profileResult.data?.role || "viewer") as Role;
@@ -154,7 +156,7 @@ export function EmergencyApp() {
       setInvites((inviteRows.data || []) as TeamInvite[]);
     }
     setLoading(false);
-  }, []);
+  }, [allowGuestDemo]);
 
   useEffect(() => {
     queueMicrotask(() => void load());
@@ -162,7 +164,13 @@ export function EmergencyApp() {
     const { data: listener } = createClient().auth.onAuthStateChange(() => void load());
     return () => listener.subscription.unsubscribe();
   }, [load]);
-  useEffect(() => { if (!user && !loading) localStorage.setItem(LOCAL_KEY, JSON.stringify(data)); }, [data, user, loading]);
+  useEffect(() => { if (allowGuestDemo && !user && !loading) localStorage.setItem(LOCAL_KEY, JSON.stringify(data)); }, [allowGuestDemo, data, user, loading]);
+
+  function navigate(nextPage: ProductPage) {
+    const target = urlForPage(nextPage, window.location.hostname);
+    if (target.startsWith("/?view=")) setPage(nextPage);
+    else window.location.assign(target);
+  }
 
   function requireWrite() { if (!accountActive) { setNotice("账号已停用，请联系管理员。"); return false; } if (!canWrite(role)) { setNotice("当前角色为只读角色。"); return false; } return true; }
   async function audit(action: string, entity_type: string, entity_id?: string, detail: Record<string, unknown> = {}) {
@@ -324,7 +332,7 @@ export function EmergencyApp() {
       if (eventUpdate.error) return setNotice(eventUpdate.error.message);
       await audit("启动预案版本并生成指令", "emergency_plan", plan.id, { event: event.id, version: version.version_no }); await load();
     }
-    setPage("command"); setNotice(`已启动《${plan.title}》V${version.version_no}，并按模板生成 ${tasks.length} 条指令。`);
+    navigate("command"); setNotice(`已启动《${plan.title}》V${version.version_no}，并按模板生成 ${tasks.length} 条指令。`);
   }
 
   async function addResource(form: FormData) {
@@ -526,13 +534,13 @@ export function EmergencyApp() {
     if (!requireWrite()) return;
     const asset = data.monitoringAssets.find((item) => item.id === alert.asset_id); const actionName = action === "claim" ? "认领" : action === "verify" ? "复核" : action === "convert" ? "转事件" : "关闭"; let eventId: string | null = null;
     if (!user) {
-      if (action === "convert") { eventId = uid(); const event: EventRecord = { id: eventId, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判", created_at: now() }; setData((current) => withLocalLog({ ...current, events: [event, ...current.events], monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: "converted", event_id: eventId } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: "converted", note: "告警已转入事件研判。", created_at: now() }, ...current.monitoringActions] }, "监测告警转事件", "monitoring_alert")); setPage("plans"); setNotice("告警已转入事件研判并进入预案中心。"); return; }
+      if (action === "convert") { eventId = uid(); const event: EventRecord = { id: eventId, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判", created_at: now() }; setData((current) => withLocalLog({ ...current, events: [event, ...current.events], monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: "converted", event_id: eventId } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: "converted", note: "告警已转入事件研判。", created_at: now() }, ...current.monitoringActions] }, "监测告警转事件", "monitoring_alert")); navigate("plans"); setNotice("告警已转入事件研判并进入预案中心。"); return; }
       const nextStatus = action === "claim" ? "claimed" : action === "verify" ? "verified" : "closed"; setData((current) => withLocalLog({ ...current, monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: nextStatus, claimed_at: action === "claim" ? now() : item.claimed_at, verified_at: action === "verify" ? now() : item.verified_at, closed_at: action === "close" ? now() : item.closed_at } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: nextStatus, note: `告警已${actionName}。`, created_at: now() }, ...current.monitoringActions] }, `监测告警${actionName}`, "monitoring_alert")); setNotice(`告警已${actionName}。`); return;
     }
     const supabase = createClient();
     if (action === "convert") { const created = await supabase.from("events").insert({ user_id: user.id, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判" }).select("id").single(); if (created.error) return setNotice(created.error.message); eventId = created.data.id; }
     const { error } = await supabase.rpc("transition_monitoring_alert", { p_alert_id: alert.id, p_action: action, p_event_id: eventId }); if (error) return setNotice(error.message); await audit(`监测告警${actionName}`, "monitoring_alert", alert.id, { eventId }); await load();
-    if (action === "convert") { setPage("plans"); setNotice("告警已转入事件研判并进入预案中心。"); } else setNotice(`告警已${actionName}。`);
+    if (action === "convert") { navigate("plans"); setNotice("告警已转入事件研判并进入预案中心。"); } else setNotice(`告警已${actionName}。`);
   }
 
   async function addRecord(module: ProductModule, form: FormData) {
@@ -574,15 +582,15 @@ export function EmergencyApp() {
 
   function exportData() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })); a.download = `西湖应急产品数据-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); }
   async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...empty, ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates, resources: parsed.resources || demoResources, warehouses: parsed.warehouses || demoWarehouses, inventoryItems: parsed.inventoryItems || demoInventoryItems, inventoryBalances: parsed.inventoryBalances || demoInventoryBalances, inventoryDocuments: parsed.inventoryDocuments || [], inventoryDocumentLines: parsed.inventoryDocumentLines || [], inventoryMovements: parsed.inventoryMovements || [], riskBatches: parsed.riskBatches || demoRiskBatches, riskChanges: parsed.riskChanges || demoRiskFieldChanges, riskWritebackJobs: parsed.riskWritebackJobs || [], monitoringAssets: parsed.monitoringAssets || demoMonitoringAssets, monitoringReadings: parsed.monitoringReadings || demoMonitoringReadings, monitoringRules: parsed.monitoringRules || demoMonitoringRules, monitoringAlerts: parsed.monitoringAlerts || demoMonitoringAlerts, monitoringActions: parsed.monitoringActions || demoMonitoringActions }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
-  async function signOut() { if (user) await createClient().auth.signOut(); setUser(null); setRole("member"); await load(); }
+  async function signOut() { if (user) await createClient().auth.signOut(); window.location.assign(urlForPage("portal", window.location.hostname)); }
 
   const stats = useMemo(() => ({ events: data.events.length, executing: data.tasks.filter((item) => item.status !== "已完成").length, resources: data.resources.length, alerts: data.monitoringAlerts.filter((item) => item.status !== "closed").length }), [data]);
   if (loading) return <div className="loading">正在载入西湖应急综合平台…</div>;
   const writable = accountActive && canWrite(role);
   const common = { records: data.records, writable, onAdd: addRecord, onUpdate: updateRecord, onDelete: removeRecord };
-  return <div className="shell"><aside><div className="brand"><span>湖</span><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => setPage(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本机持久化"}</b><small>{user?.email || "访客模式"}</small></div></aside><main><header><span>西湖区应急管理综合平台 / {productPages.find((item) => item.key === page)?.label}</span><div className="actions"><span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${role}` : "本地产品体验"}</span>{user ? <button onClick={signOut}>退出</button> : <button onClick={() => setShowAuth(!showAuth)}>登录</button>}</div></header><div className="workspace">{showAuth && !user && <AuthPanel onDone={() => { setShowAuth(false); void load(); }} />}{notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>关闭</button></div>}
+  return <div className="shell"><aside><div className="brand"><span>湖</span><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本地演示"}</b><small>{user?.email || "仅限开发环境"}</small></div></aside><main><header><span>西湖区应急管理综合平台 / {productPages.find((item) => item.key === page)?.label}</span><div className="actions">{page !== "portal" && <button onClick={() => navigate("portal")}>返回综合门户</button>}<span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${role}` : "本地测试模式"}</span>{user && <button onClick={signOut}>退出</button>}</div></header><div className="workspace">{notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>关闭</button></div>}
     {page === "overview" && <OverviewPage stats={stats} data={data} role={accountActive ? role : "viewer"} onSeed={seed} onExport={exportData} onImport={() => importRef.current?.click()} importRef={importRef} importData={importData} />}
-    {page === "portal" && <PortalPage data={data} role={role} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
+    {page === "portal" && <PortalPage data={data} role={role} onOpen={navigate} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
     {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}
     {page === "command" && <CommandPage currentUserId={user?.id} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} />}
     {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} writable={writable} onAdd={addResource} onStatus={updateResourceStatus} onImport={importResources} onExport={exportResources} />}

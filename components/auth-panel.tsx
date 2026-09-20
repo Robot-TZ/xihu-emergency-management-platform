@@ -8,7 +8,7 @@ async function hashInviteCode(code: string) {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function AuthPanel({ onDone }: { onDone: () => void }) {
+export function AuthPanel({ onDone, emailRedirectTo }: { onDone: () => void; emailRedirectTo?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -16,7 +16,7 @@ export function AuthPanel({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
 
   async function submit(mode: "login" | "signup") {
-    if (!hasSupabaseConfig()) return setMessage("尚未连接 Supabase，当前可使用本地演示模式。");
+    if (!hasSupabaseConfig()) return setMessage("认证服务暂不可用，请联系平台主管理员。");
     if (mode === "signup" && !inviteCode.trim()) return setMessage("注册新账号需要团队邀请码。");
     setBusy(true); setMessage("");
     const supabase = createClient();
@@ -25,7 +25,7 @@ export function AuthPanel({ onDone }: { onDone: () => void }) {
       : await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
+          options: { emailRedirectTo: emailRedirectTo || `${window.location.origin}/auth/confirm` },
         });
     if (result.error) { setBusy(false); return setMessage(result.error.message); }
     if (result.data.session) {
@@ -44,8 +44,8 @@ export function AuthPanel({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="auth-panel">
-      <h2>登录云端工作台</h2>
-      <p>登录后数据保存到 Supabase；不登录也可在本机体验，刷新不会丢失。</p>
+      <h2>登录西湖应急平台</h2>
+      <p>使用统一账号进入综合门户，业务数据将安全保存到云端。</p>
       <label>邮箱<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" /></label>
       <label>密码<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" minLength={8} /></label>
       <label>团队邀请码<input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="新成员注册必填；已有账号可留空" autoComplete="off" /></label>

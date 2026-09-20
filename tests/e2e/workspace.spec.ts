@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?demo=1&view=overview");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
 });
@@ -16,7 +16,7 @@ test("guest product data persists across refresh", async ({ page }) => {
 
 test("workspace exposes the tender-aligned product modules", async ({ page }) => {
   for (const name of ["综合门户", "台汛卫士", "预案中心", "指挥调度", "应急资源", "物资库存", "风险普查", "城市安全", "应急值班", "数据管理", "灾后复盘"]) {
-    await expect(page.getByRole("button", { name: new RegExp(name) })).toBeVisible();
+    await expect(page.locator("aside").getByRole("button", { name: new RegExp(name) })).toBeVisible();
   }
 });
 
