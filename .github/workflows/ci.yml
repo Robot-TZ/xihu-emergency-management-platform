@@ -49,5 +49,29 @@ jobs:
         run: |
           DEPLOYMENT_URL="$(pnpm dlx vercel@59.23.2 deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")"
           echo "url=${DEPLOYMENT_URL}" >> "$GITHUB_OUTPUT"
+      - name: Ensure product subdomains are bound
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          project_domains="$(curl --fail-with-body --silent --show-error \
+            "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains?teamId=${VERCEL_ORG_ID}" \
+            --header "Authorization: Bearer ${VERCEL_TOKEN}")"
+          for domain in \
+            typhoon.xihuresponse.top plan.xihuresponse.top command.xihuresponse.top \
+            resource.xihuresponse.top inventory.xihuresponse.top risk.xihuresponse.top \
+            city.xihuresponse.top duty.xihuresponse.top data.xihuresponse.top \
+            review.xihuresponse.top admin.xihuresponse.top; do
+            if jq --exit-status --arg domain "$domain" '.domains[] | select(.name == $domain)' <<< "$project_domains" >/dev/null; then
+              echo "$domain is already bound"
+            else
+              curl --fail-with-body --silent --show-error \
+                --request POST \
+                "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}/domains?teamId=${VERCEL_ORG_ID}" \
+                --header "Authorization: Bearer ${VERCEL_TOKEN}" \
+                --header "Content-Type: application/json" \
+                --data "{\"name\":\"${domain}\"}" >/dev/null
+              echo "$domain was bound"
+            fi
+          done
       - name: Update canonical production domain
         run: pnpm dlx vercel@59.23.2 alias set "${{ steps.deploy.outputs.url }}" xihu-emergency-management-platform.vercel.app --token="${{ secrets.VERCEL_TOKEN }}"
