@@ -11,6 +11,8 @@ describe("product routing", () => {
   it("builds production and local module URLs", () => {
     expect(urlForPage("command", "xihuresponse.top")).toBe("https://command.xihuresponse.top/");
     expect(urlForPage("plans", "localhost")).toBe("/?view=plans");
+    expect(urlForPage("plans", "xihuresponse.top", "event-123")).toBe("https://plan.xihuresponse.top/?event=event-123");
+    expect(urlForPage("logs", "xihuresponse.top", "event-123")).toBe("https://admin.xihuresponse.top/?view=logs&event=event-123");
   });
 
   it("rejects external post-login redirects", () => {

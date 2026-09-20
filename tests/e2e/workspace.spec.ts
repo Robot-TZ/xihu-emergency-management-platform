@@ -28,18 +28,20 @@ test("workspace exposes the tender-aligned product modules via the drawer", asyn
 
 test("command tasks can be created, advanced and deleted", async ({ page }) => {
   await gotoModule(page, /指挥调度/);
+  await page.getByText("手工下达指令").click();
   await page.getByLabel("任务", { exact: true }).fill("巡查测试任务");
   await page.getByLabel("接收人").selectOption("");
   await page.getByLabel("接收组织").selectOption("");
   await page.getByRole("button", { name: "下达指令" }).click();
   let row = page.getByRole("row").filter({ hasText: "巡查测试任务" });
   await expect(row).toContainText("待查阅");
-  await row.getByRole("button", { name: "推进" }).click();
+  await row.getByRole("button", { name: "标记已读" }).click();
   await expect(row).toContainText("已读");
   await page.reload();
   await gotoModule(page, /指挥调度/);
   row = page.getByRole("row").filter({ hasText: "巡查测试任务" });
   await expect(row).toContainText("已读");
+  page.once("dialog", (dialog) => dialog.accept());
   await row.getByRole("button", { name: "删除" }).click();
   await expect(row).toHaveCount(0);
 });
@@ -47,7 +49,7 @@ test("command tasks can be created, advanced and deleted", async ({ page }) => {
 test("monitoring command center deduplicates and converts an alert", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
   await gotoModule(page, /台汛卫士/);
-  await expect(page.getByText("当前外部实时数据为模拟")).toBeVisible();
+  await expect(page.getByText("业务监测为模拟 · 公共天气仅供参考")).toBeVisible();
   await expect(page.getByText("设备在线率")).toBeVisible();
   const ingest = page.getByRole("heading", { name: "模拟适配器采集" }).locator("..");
   await ingest.getByLabel("设备").selectOption("asset-depth");
@@ -90,7 +92,8 @@ test("inventory inbound document posts and changes the balance", async ({ page }
   await form.locator('input[name="quantity"]').fill("2");
   await form.getByRole("button", { name: "创建草稿" }).click();
   await page.getByRole("button", { name: "提交审核" }).click();
-  await page.getByRole("button", { name: "审核记账" }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "审核并记账" }).click();
   await expect(page.getByText("单据已审核，库存余额已原子更新。")).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "移动排涝泵" }).filter({ hasText: "10 台" })).toBeVisible();
 });

@@ -14,13 +14,14 @@ import { applyInventoryDeltas } from "@/lib/resource-engine";
 import { downloadCsv, downloadWorkbook, readWorkbook, type SheetRow } from "@/lib/spreadsheet";
 import { demoOperationalRecords, moduleMeta, productPages, type ProductPage } from "@/lib/product-catalog";
 import type { ActivityLog, EmergencyPlan, EventRecord, InventoryBalance, InventoryDocument, InventoryDocumentLine, InventoryItem, InventoryMovement, MonitoringAlert, MonitoringAlertAction, MonitoringAsset, MonitoringDomain, MonitoringReading, MonitoringRule, OperationalRecord, Organization, OrganizationMember, PlanTaskTemplate, PlanVersion, ProductModule, Profile, ResourceAsset, RiskFieldChange, RiskImportBatch, RiskRecord, RiskWritebackJob, Role, TaskRecord, TeamInvite, Warehouse } from "@/lib/types";
-import { DataPage, DutyPage, LogsPage, OverviewPage, PortalPage, ResourcesPage } from "./product-pages";
+import { DataPage, LogsPage, OverviewPage, PortalPage } from "./product-pages";
 import { LogoMark } from "./logo-mark";
 import { AdminPage, CommandPage } from "./workflow-pages";
 import { PlanCenterPage, type PlanLifecycleAction } from "./plan-center";
 import { InventoryCenterPage, ResourceCenterPage } from "./resource-inventory-center";
 import { RiskSurveyCenterPage } from "./risk-survey-center";
 import { MonitoringCenterPage } from "./monitoring-center";
+import { DutyCenterPage, EventContextBar, ReviewCenterPage } from "./experience-center";
 
 export type ProductSnapshot = {
   events: EventRecord[]; tasks: TaskRecord[]; risks: RiskRecord[]; logs: ActivityLog[]; records: OperationalRecord[];
@@ -87,7 +88,7 @@ function withLocalLog(data: ProductSnapshot, action: string, entity_type: string
   return { ...data, logs: [{ id: uid(), action, entity_type, detail, created_at: now() }, ...data.logs] };
 }
 
-export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }: { initialPage?: ProductPage; allowGuestDemo?: boolean }) {
+export function EmergencyApp({ initialPage = "portal", initialEventId, allowGuestDemo = false }: { initialPage?: ProductPage; initialEventId?: string; allowGuestDemo?: boolean }) {
   const [page, setPage] = useState<ProductPage>(initialPage);
   const [data, setData] = useState<ProductSnapshot>(empty);
   const [user, setUser] = useState<User | null>(null);
@@ -101,6 +102,7 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeEventId, setActiveEventId] = useState(initialEventId || "");
   const importRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -168,14 +170,19 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   }, [load]);
   useEffect(() => { if (allowGuestDemo && !user && !loading) localStorage.setItem(LOCAL_KEY, JSON.stringify(data)); }, [allowGuestDemo, data, user, loading]);
 
-  function navigate(nextPage: ProductPage) {
+  function navigate(nextPage: ProductPage, eventId: string = activeEventId) {
     setSidebarOpen(false);
-    const target = urlForPage(nextPage, window.location.hostname);
-    if (target.startsWith("/?view=")) setPage(nextPage);
+    setActiveEventId(eventId);
+    const target = urlForPage(nextPage, window.location.hostname, eventId || null);
+    if (target.startsWith("/?view=")) {
+      setPage(nextPage);
+      window.history.replaceState(null, "", allowGuestDemo ? `${target}&demo=1` : target);
+    }
     else window.location.assign(target);
   }
 
   function requireWrite() { if (!accountActive) { setNotice("账号已停用，请联系管理员。"); return false; } if (!canWrite(role)) { setNotice("当前角色为只读角色。"); return false; } return true; }
+  function confirmAction(message: string) { return typeof window !== "undefined" && window.confirm(message); }
   async function audit(action: string, entity_type: string, entity_id?: string, detail: Record<string, unknown> = {}) {
     if (user) await createClient().from("activity_logs").insert({ user_id: user.id, action, entity_type, entity_id: entity_id && /^[0-9a-f-]{36}$/.test(entity_id) ? entity_id : null, detail });
   }
@@ -213,11 +220,16 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   async function progressEvent(event: EventRecord) {
     if (!requireWrite()) return;
     const status = event.status === "待研判" ? "已研判" : event.status === "已研判" ? "处置中" : "已结案";
+    if (status === "已结案" && data.tasks.some((item) => item.event_id === event.id && item.status !== "已完成")) return setNotice("仍有未完成任务，不能结案。请先完成任务或记录异常处置结果。");
+    if (status === "已结案" && !confirmAction("确认所有处置结果均已复核，并将该事件结案？")) return;
     if (!user) setData((current) => withLocalLog({ ...current, events: current.events.map((item) => item.id === event.id ? { ...item, status } : item) }, "推进事件", "event", { status }));
     else { const { error } = await createClient().from("events").update({ status, updated_at: now() }).eq("id", event.id); if (error) return setNotice(error.message); await audit("推进事件", "event", event.id, { status }); await load(); }
   }
   async function removeEvent(eventId: string) {
     if (!requireWrite()) return;
+    const linkedTasks = data.tasks.filter((item) => item.event_id === eventId);
+    if (linkedTasks.length) return setNotice(`该事件关联 ${linkedTasks.length} 条任务，不能直接删除。请保留审计记录并通过结案关闭。`);
+    if (!confirmAction("删除后无法恢复，确认删除这个未关联任务的事件？")) return;
     if (!user) setData((current) => withLocalLog({ ...current, events: current.events.filter((item) => item.id !== eventId), tasks: current.tasks.filter((item) => item.event_id !== eventId) }, "删除事件", "event"));
     else { const { error } = await createClient().from("events").delete().eq("id", eventId); if (error) return setNotice(error.message); await audit("删除事件", "event", eventId); await load(); }
   }
@@ -243,6 +255,7 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   }
   async function removeTask(taskId: string) {
     if (!requireWrite()) return;
+    if (!confirmAction("删除任务会移除处置记录。正式业务建议保留并完成或关闭，仍要删除吗？")) return;
     if (!user) setData((current) => withLocalLog({ ...current, tasks: current.tasks.filter((item) => item.id !== taskId) }, "删除指令任务", "task"));
     else { const { error } = await createClient().from("tasks").delete().eq("id", taskId); if (error) return setNotice(error.message); await audit("删除指令任务", "task", taskId); await load(); }
   }
@@ -276,6 +289,7 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   async function transitionPlan(plan: EmergencyPlan, version: PlanVersion, action: PlanLifecycleAction) {
     if (!requireWrite()) return;
     if ((action === "publish" || action === "retire") && role !== "admin") return setNotice("审核发布和作废只允许管理员操作。");
+    if (action === "retire" && !confirmAction("作废后该预案将不再参与事件匹配，但历史版本与审计记录会保留。确认作废？")) return;
     const versionTemplates = data.planTemplates.filter((item) => item.version_id === version.id).sort((a, b) => a.sort_order - b.sort_order);
     const createdAt = now();
     if (!user) {
@@ -318,6 +332,8 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
 
   async function removePlan(plan: EmergencyPlan) {
     if (!requireWrite()) return;
+    if (plan.status !== "draft") return setNotice("非草稿预案不得直接删除，请使用“作废”保留版本和审计记录。");
+    if (!confirmAction("确认删除该草稿及其全部版本和任务模板？此操作无法恢复。")) return;
     if (!user) setData((current) => { const versionIds = current.planVersions.filter((item) => item.plan_id === plan.id).map((item) => item.id); return withLocalLog({ ...current, plans: current.plans.filter((item) => item.id !== plan.id), planVersions: current.planVersions.filter((item) => item.plan_id !== plan.id), planTemplates: current.planTemplates.filter((item) => !versionIds.includes(item.version_id)) }, "删除预案", "emergency_plan"); });
     else { const { error } = await createClient().from("emergency_plans").delete().eq("id", plan.id); if (error) return setNotice(error.message); await audit("删除预案", "emergency_plan", plan.id); await load(); }
     setNotice("预案及其版本和任务模板已删除。");
@@ -335,7 +351,7 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
       if (eventUpdate.error) return setNotice(eventUpdate.error.message);
       await audit("启动预案版本并生成指令", "emergency_plan", plan.id, { event: event.id, version: version.version_no }); await load();
     }
-    navigate("command"); setNotice(`已启动《${plan.title}》V${version.version_no}，并按模板生成 ${tasks.length} 条指令。`);
+    navigate("command", event.id); setNotice(`已启动《${plan.title}》V${version.version_no}，并按模板生成 ${tasks.length} 条指令。`);
   }
 
   async function addResource(form: FormData) {
@@ -394,6 +410,8 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   }
   async function postInventoryDocument(document: InventoryDocument, action: "approve" | "cancel") {
     if (role !== "admin" && user) return setNotice("只有管理员可以审核记账或撤销单据。");
+    if (action === "approve" && !confirmAction(`确认审核单据 ${document.document_no} 并更新库存余额？`)) return;
+    if (action === "cancel" && !confirmAction(`撤销 ${document.document_no} 将生成反向冲销流水。确认继续？`)) return;
     if (!user) {
       try {
         setData((current) => {
@@ -489,6 +507,9 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   }
   async function removeRisk(riskId: string) {
     if (!requireWrite()) return;
+    const risk = data.risks.find((item) => item.id === riskId);
+    if (risk && risk.status !== "待派单") return setNotice("已进入确认或回写流程的工单不得直接删除，请退回或保留审计记录。");
+    if (!confirmAction("确认删除这条尚未派发的风险工单？此操作无法恢复。")) return;
     if (!user) setData((current) => withLocalLog({ ...current, risks: current.risks.filter((item) => item.id !== riskId) }, "删除风险工单", "risk"));
     else { const { error } = await createClient().from("risk_records").delete().eq("id", riskId); if (error) return setNotice(error.message); await audit("删除风险工单", "risk", riskId); await load(); }
   }
@@ -535,15 +556,16 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
 
   async function transitionMonitoringAlert(alert: MonitoringAlert, action: "claim" | "verify" | "convert" | "close") {
     if (!requireWrite()) return;
+    if (action === "close" && !confirmAction("关闭告警前应确认它是误报、已解除或已有替代处置记录。确认关闭？")) return;
     const asset = data.monitoringAssets.find((item) => item.id === alert.asset_id); const actionName = action === "claim" ? "认领" : action === "verify" ? "复核" : action === "convert" ? "转事件" : "关闭"; let eventId: string | null = null;
     if (!user) {
-      if (action === "convert") { eventId = uid(); const event: EventRecord = { id: eventId, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判", created_at: now() }; setData((current) => withLocalLog({ ...current, events: [event, ...current.events], monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: "converted", event_id: eventId } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: "converted", note: "告警已转入事件研判。", created_at: now() }, ...current.monitoringActions] }, "监测告警转事件", "monitoring_alert")); navigate("plans"); setNotice("告警已转入事件研判并进入预案中心。"); return; }
+      if (action === "convert") { eventId = uid(); const event: EventRecord = { id: eventId, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判", created_at: now() }; setData((current) => withLocalLog({ ...current, events: [event, ...current.events], monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: "converted", event_id: eventId } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: "converted", note: "告警已转入事件研判。", created_at: now() }, ...current.monitoringActions] }, "监测告警转事件", "monitoring_alert")); navigate("plans", eventId); setNotice("告警已转入事件研判并进入预案中心。"); return; }
       const nextStatus = action === "claim" ? "claimed" : action === "verify" ? "verified" : "closed"; setData((current) => withLocalLog({ ...current, monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: nextStatus, claimed_at: action === "claim" ? now() : item.claimed_at, verified_at: action === "verify" ? now() : item.verified_at, closed_at: action === "close" ? now() : item.closed_at } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: nextStatus, note: `告警已${actionName}。`, created_at: now() }, ...current.monitoringActions] }, `监测告警${actionName}`, "monitoring_alert")); setNotice(`告警已${actionName}。`); return;
     }
     const supabase = createClient();
     if (action === "convert") { const created = await supabase.from("events").insert({ user_id: user.id, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判" }).select("id").single(); if (created.error) return setNotice(created.error.message); eventId = created.data.id; }
     const { error } = await supabase.rpc("transition_monitoring_alert", { p_alert_id: alert.id, p_action: action, p_event_id: eventId }); if (error) return setNotice(error.message); await audit(`监测告警${actionName}`, "monitoring_alert", alert.id, { eventId }); await load();
-    if (action === "convert") { navigate("plans"); setNotice("告警已转入事件研判并进入预案中心。"); } else setNotice(`告警已${actionName}。`);
+    if (action === "convert") { navigate("plans", eventId || ""); setNotice("告警已转入事件研判并进入预案中心。"); } else setNotice(`告警已${actionName}。`);
   }
 
   async function addRecord(module: ProductModule, form: FormData) {
@@ -559,11 +581,12 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   }
   async function removeRecord(record: OperationalRecord) {
     if (!requireWrite()) return;
+    if (!confirmAction(`确认删除“${record.title}”？正式业务建议通过归档保留历史记录。`)) return;
     if (!user) setData((current) => withLocalLog({ ...current, records: current.records.filter((item) => item.id !== record.id) }, `删除${moduleMeta[record.module].title}记录`, record.module));
     else { const { error } = await createClient().from("operational_records").delete().eq("id", record.id); if (error) return setNotice(error.message); await audit(`删除${moduleMeta[record.module].title}记录`, record.module, record.id); await load(); }
   }
-  async function updateProfileRole(profileId: string, nextRole: Role) { if (!user || role !== "admin") return; const { error } = await createClient().from("profiles").update({ role: nextRole }).eq("id", profileId); if (error) return setNotice(error.message); await audit("调整成员角色", "profile", profileId, { role: nextRole }); await load(); }
-  async function toggleProfile(profile: Profile) { if (!user || role !== "admin") return; if (profile.id === user.id && profile.active) return setNotice("不能停用当前登录的管理员账号。"); const active = !profile.active; const { error } = await createClient().from("profiles").update({ active }).eq("id", profile.id); if (error) return setNotice(error.message); await audit(active ? "启用账号" : "停用账号", "profile", profile.id); await load(); }
+  async function updateProfileRole(profileId: string, nextRole: Role) { if (!user || role !== "admin") return; const profile = profiles.find((item) => item.id === profileId); if (!confirmAction(`确认将 ${profile?.email || "该成员"} 的角色调整为 ${nextRole}？权限将立即变化。`)) return; const { error } = await createClient().from("profiles").update({ role: nextRole }).eq("id", profileId); if (error) return setNotice(error.message); await audit("调整成员角色", "profile", profileId, { role: nextRole }); await load(); }
+  async function toggleProfile(profile: Profile) { if (!user || role !== "admin") return; if (profile.id === user.id && profile.active) return setNotice("不能停用当前登录的管理员账号。"); const active = !profile.active; if (!confirmAction(`${active ? "启用" : "停用"} ${profile.email || "该账号"}？${active ? "其业务访问将恢复。" : "其未完成任务会保留，但账号将无法访问业务数据。"}`)) return; const { error } = await createClient().from("profiles").update({ active }).eq("id", profile.id); if (error) return setNotice(error.message); await audit(active ? "启用账号" : "停用账号", "profile", profile.id); await load(); }
   async function addOrganization(form: FormData) {
     if (!user || role !== "admin") return;
     const { error } = await createClient().from("organizations").insert({ name: String(form.get("name")), code: String(form.get("code")).trim().toUpperCase(), org_type: String(form.get("orgType")), area: String(form.get("area") || ""), parent_id: String(form.get("parentId") || "") || null, created_by: user.id });
@@ -581,7 +604,7 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
     const { error } = await createClient().from("team_invites").insert({ label: String(form.get("label")), code_hash: await hashInviteCode(code), role: String(form.get("role")), organization_id: String(form.get("organizationId") || "") || null, max_uses: Number(form.get("maxUses") || 10), expires_at: String(form.get("expiresAt") || "") || null, created_by: user.id });
     if (error) return setNotice(error.message); setNewInviteCode(code); await audit("创建团队邀请码", "team_invite", undefined, { label: String(form.get("label")) }); await load();
   }
-  async function disableInvite(invite: TeamInvite) { if (!user || role !== "admin") return; const { error } = await createClient().from("team_invites").update({ active: false }).eq("id", invite.id); if (error) return setNotice(error.message); await audit("停用团队邀请码", "team_invite", invite.id); await load(); }
+  async function disableInvite(invite: TeamInvite) { if (!user || role !== "admin") return; if (!confirmAction(`确认停用邀请码“${invite.label}”？尚未使用的成员将不能再凭此注册。`)) return; const { error } = await createClient().from("team_invites").update({ active: false }).eq("id", invite.id); if (error) return setNotice(error.message); await audit("停用团队邀请码", "team_invite", invite.id); await load(); }
 
   function exportData() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })); a.download = `西湖应急产品数据-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); }
   async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...empty, ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates, resources: parsed.resources || demoResources, warehouses: parsed.warehouses || demoWarehouses, inventoryItems: parsed.inventoryItems || demoInventoryItems, inventoryBalances: parsed.inventoryBalances || demoInventoryBalances, inventoryDocuments: parsed.inventoryDocuments || [], inventoryDocumentLines: parsed.inventoryDocumentLines || [], inventoryMovements: parsed.inventoryMovements || [], riskBatches: parsed.riskBatches || demoRiskBatches, riskChanges: parsed.riskChanges || demoRiskFieldChanges, riskWritebackJobs: parsed.riskWritebackJobs || [], monitoringAssets: parsed.monitoringAssets || demoMonitoringAssets, monitoringReadings: parsed.monitoringReadings || demoMonitoringReadings, monitoringRules: parsed.monitoringRules || demoMonitoringRules, monitoringAlerts: parsed.monitoringAlerts || demoMonitoringAlerts, monitoringActions: parsed.monitoringActions || demoMonitoringActions }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
@@ -593,16 +616,19 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   const common = { records: data.records, writable, onAdd: addRecord, onUpdate: updateRecord, onDelete: removeRecord };
   const isPortal = page === "portal";
   const pageLabel = productPages.find((item) => item.key === page)?.label;
-  return <div className={`shell${isPortal ? " no-sidebar" : ""}${sidebarOpen ? " sidebar-open" : ""}`}>{!isPortal && <aside><div className="brand"><LogoMark size={40} outline="#6bc7c6" /><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本地演示"}</b><small>{user?.email || "仅限开发环境"}</small></div></aside>}{!isPortal && sidebarOpen && <button className="sidebar-backdrop" aria-label="关闭导航菜单" onClick={() => setSidebarOpen(false)} />}<main><header><div className="header-left">{!isPortal && <button className="menu-btn" aria-label="切换导航菜单" title="切换导航菜单" onClick={() => setSidebarOpen((open) => !open)}><span /><span /><span /></button>}<span>西湖区应急管理综合平台 / {pageLabel}</span></div><div className="actions">{page !== "portal" && <button onClick={() => navigate("portal")}>返回综合门户</button>}<span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${role}` : "本地测试模式"}</span>{user && <button onClick={signOut}>退出</button>}</div></header><div className="workspace">{notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>关闭</button></div>}
+  const activeEvent = data.events.find((item) => item.id === activeEventId);
+  const roleLabel = role === "admin" ? "管理员" : role === "member" ? "业务成员" : "只读查看者";
+  return <div className={`shell${isPortal ? " no-sidebar" : ""}${sidebarOpen ? " sidebar-open" : ""}`}><a className="skip-link" href="#main-content">跳到主要内容</a>{!isPortal && <aside aria-label="业务子产品导航"><div className="brand"><LogoMark size={40} outline="#6bc7c6" /><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本地演示"}</b><small>{user?.email || "仅限开发环境"}</small></div></aside>}{!isPortal && sidebarOpen && <button className="sidebar-backdrop" aria-label="关闭导航菜单" onClick={() => setSidebarOpen(false)} />}<main id="main-content"><header><div className="header-left">{!isPortal && <button className="menu-btn" aria-label="切换导航菜单" aria-expanded={sidebarOpen} title="切换导航菜单" onClick={() => setSidebarOpen((open) => !open)}><span /><span /><span /></button>}<span>西湖区应急管理综合平台 / {pageLabel}</span></div><div className="actions">{page !== "portal" && <button onClick={() => navigate("portal")}>返回综合门户</button>}<span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${roleLabel}` : "本地测试模式"}</span>{user && <button onClick={signOut}>安全退出</button>}</div></header><div className="workspace">{notice && <div className="notice" role="status" aria-live="polite"><span>{notice}</span><button aria-label="关闭提示" onClick={() => setNotice("")}>关闭</button></div>}
+    {!isPortal && <EventContextBar event={activeEvent} tasks={data.tasks} plans={data.plans} onNavigate={navigate} onClear={() => navigate(page, "")} />}
     {page === "overview" && <OverviewPage stats={stats} data={data} role={accountActive ? role : "viewer"} onSeed={seed} onExport={exportData} onImport={() => importRef.current?.click()} importRef={importRef} importData={importData} />}
-    {page === "portal" && <PortalPage data={data} role={role} onOpen={navigate} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
-    {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}
-    {page === "command" && <CommandPage currentUserId={user?.id} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} />}
-    {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} writable={writable} onAdd={addResource} onStatus={updateResourceStatus} onImport={importResources} onExport={exportResources} />}
+    {page === "portal" && <PortalPage data={data} role={role} currentUserId={user?.id} onOpen={navigate} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
+    {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} activeEventId={activeEventId} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}
+    {page === "command" && <CommandPage currentUserId={user?.id} activeEventId={activeEventId} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onSelectEvent={setActiveEventId} onOpenRelated={navigate} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} />}
+    {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} activeEventId={activeEventId} writable={writable} onAdd={addResource} onStatus={updateResourceStatus} onImport={importResources} onExport={exportResources} />}
     {page === "inventory" && <InventoryCenterPage warehouses={data.warehouses} items={data.inventoryItems} balances={data.inventoryBalances} documents={data.inventoryDocuments} lines={data.inventoryDocumentLines} writable={writable} admin={!user || role === "admin"} onAddWarehouse={addWarehouse} onAddItem={addInventoryItem} onCreateDocument={createInventoryDocument} onSubmit={submitInventoryDocument} onPost={postInventoryDocument} onImport={importInventory} onExport={exportInventory} />}
     {page === "risks" && <RiskSurveyCenterPage risks={data.risks} batches={data.riskBatches} changes={data.riskChanges} jobs={data.riskWritebackJobs} profiles={profiles} organizations={organizations} writable={writable} admin={!user || role === "admin"} onAdd={addRisk} onBulkAssign={bulkAssignRisks} onTransition={transitionRisk} onDelete={removeRisk} onImport={importRiskBatch} onExport={exportRiskRows} onRetry={retryRiskWriteback} />}
-    {page === "city" && <MonitoringCenterPage domain="city" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}{page === "duty" && <DutyPage {...common} />}
-    {page === "data" && <DataPage {...common} onExport={exportData} />}{page === "reviews" && <ResourcesPage {...common} module="reviews" />}
+    {page === "city" && <MonitoringCenterPage domain="city" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}{page === "duty" && <DutyCenterPage {...common} />}
+    {page === "data" && <DataPage {...common} onExport={exportData} />}{page === "reviews" && <ReviewCenterPage {...common} events={data.events} tasks={data.tasks} activeEventId={activeEventId} onSelectEvent={setActiveEventId} />}
     {page === "logs" && <LogsPage logs={data.logs} />}{page === "admin" && role === "admin" && <AdminPage profiles={profiles} organizations={organizations} memberships={memberships} invites={invites} newInviteCode={newInviteCode} onRoleChange={updateProfileRole} onToggleProfile={toggleProfile} onAddOrganization={addOrganization} onAddMembership={addMembership} onCreateInvite={createInvite} onDisableInvite={disableInvite} />}
   </div></main></div>;
 }

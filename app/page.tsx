@@ -12,9 +12,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const headerStore = await headers();
   const host = headerStore.get("x-forwarded-host") || headerStore.get("host") || "";
   const view = typeof params.view === "string" ? params.view : undefined;
+  const initialEventId = typeof params.event === "string" ? params.event : undefined;
   const initialPage = pageForHostname(host, view);
   const localDemo = ["localhost", "127.0.0.1"].some((name) => host.startsWith(name)) && params.demo === "1";
-  if (localDemo) return <EmergencyApp initialPage={initialPage} allowGuestDemo />;
+  if (localDemo) return <EmergencyApp initialPage={initialPage} initialEventId={initialEventId} allowGuestDemo />;
 
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
@@ -30,5 +31,5 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
     const requestedNext = typeof params.next === "string" ? safeReturnUrl(params.next) : undefined;
     return <LoginPage next={requestedNext} />;
   }
-  return <EmergencyApp initialPage={initialPage} />;
+  return <EmergencyApp initialPage={initialPage} initialEventId={initialEventId} />;
 }

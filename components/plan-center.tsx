@@ -18,11 +18,12 @@ function latestVersion(planId: string, versions: PlanVersion[]) {
   return versions.filter((item) => item.plan_id === planId).sort((a, b) => b.version_no - a.version_no)[0];
 }
 
-export function PlanCenterPage({ plans, versions, templates, events, writable, admin, onAdd, onLifecycle, onDelete, onStart }: {
+export function PlanCenterPage({ plans, versions, templates, events, activeEventId, writable, admin, onAdd, onLifecycle, onDelete, onStart }: {
   plans: EmergencyPlan[];
   versions: PlanVersion[];
   templates: PlanTaskTemplate[];
   events: EventRecord[];
+  activeEventId?: string;
   writable: boolean;
   admin: boolean;
   onAdd: (form: FormData) => void;
@@ -30,7 +31,7 @@ export function PlanCenterPage({ plans, versions, templates, events, writable, a
   onDelete: (plan: EmergencyPlan) => void;
   onStart: (event: EventRecord, plan: EmergencyPlan, version: PlanVersion, templates: PlanTaskTemplate[]) => void;
 }) {
-  const [eventId, setEventId] = useState("");
+  const [eventId, setEventId] = useState(activeEventId || "");
   const event = events.find((item) => item.id === eventId) || events[0];
   const recommendations = useMemo(() => event ? rankPlans(event, plans, versions) : [], [event, plans, versions]);
 

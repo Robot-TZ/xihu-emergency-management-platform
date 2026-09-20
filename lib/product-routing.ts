@@ -44,14 +44,15 @@ export function pageForHostname(host: string, requestedView?: string | null): Pr
   return "portal";
 }
 
-export function urlForPage(page: ProductPage, currentHostname?: string) {
+export function urlForPage(page: ProductPage, currentHostname?: string, eventId?: string | null) {
   const hostname = currentHostname ? hostnameWithoutPort(currentHostname) : "";
-  if (hostname && !isPlatformHostname(hostname)) return `/?view=${page}`;
-  if (page === "overview") return `https://${PLATFORM_DOMAIN}/?view=overview`;
-  if (page === "portal") return `https://${PLATFORM_DOMAIN}/`;
+  const eventQuery = eventId ? `event=${encodeURIComponent(eventId)}` : "";
+  if (hostname && !isPlatformHostname(hostname)) return `/?view=${page}${eventQuery ? `&${eventQuery}` : ""}`;
+  if (page === "overview") return `https://${PLATFORM_DOMAIN}/?view=overview${eventQuery ? `&${eventQuery}` : ""}`;
+  if (page === "portal") return `https://${PLATFORM_DOMAIN}/${eventQuery ? `?${eventQuery}` : ""}`;
   const subdomain = subdomainByPage[page];
-  const query = page === "logs" ? "?view=logs" : "";
-  return `https://${subdomain}.${PLATFORM_DOMAIN}/${query}`;
+  const query = [page === "logs" ? "view=logs" : "", eventQuery].filter(Boolean).join("&");
+  return `https://${subdomain}.${PLATFORM_DOMAIN}/${query ? `?${query}` : ""}`;
 }
 
 export function safeReturnUrl(value?: string | null) {

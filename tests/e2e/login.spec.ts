@@ -13,5 +13,5 @@ test("local demo portal opens a module and can return to the portal", async ({ p
   await card.getByRole("button", { name: "进入" }).click();
   await expect(page.getByRole("heading", { name: "预案中心", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "返回综合门户" }).click();
-  await expect(page.getByRole("heading", { name: "综合门户", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的应急工作台", exact: true })).toBeVisible();
 });

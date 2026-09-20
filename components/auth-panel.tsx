@@ -14,6 +14,8 @@ export function AuthPanel({ onDone, emailRedirectTo }: { onDone: () => void; ema
   const [inviteCode, setInviteCode] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(mode: "login" | "signup") {
     if (!hasSupabaseConfig()) return setMessage("认证服务暂不可用，请联系平台主管理员。");
@@ -44,13 +46,14 @@ export function AuthPanel({ onDone, emailRedirectTo }: { onDone: () => void; ema
 
   return (
     <div className="auth-panel">
-      <h2>登录西湖应急平台</h2>
-      <p>使用统一账号进入综合门户，业务数据将安全保存到云端。</p>
-      <label>邮箱<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" /></label>
-      <label>密码<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" minLength={8} /></label>
-      <label>团队邀请码<input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="新成员注册必填；已有账号可留空" autoComplete="off" /></label>
-      <div className="actions"><button className="primary" disabled={busy} onClick={() => submit("login")}>登录</button><button disabled={busy} onClick={() => submit("signup")}>注册</button></div>
-      {message && <p className="form-message">{message}</p>}
+      <div className="auth-tabs" role="tablist" aria-label="登录或注册"><button role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => { setMode("login"); setMessage(""); }}>已有账号登录</button><button role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => { setMode("signup"); setMessage(""); }}>新成员注册</button></div>
+      <h2>{mode === "login" ? "登录西湖应急平台" : "注册团队账号"}</h2>
+      <p>{mode === "login" ? "登录后进入工作台，继续处理本人和所属组织的业务。" : "请使用本人邮箱和管理员发放的邀请码；权限在后台统一分配。"}</p>
+      <label>邮箱<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required autoComplete="email" /></label>
+      <label>密码<div className="password-field"><input value={password} onChange={(e) => setPassword(e.target.value)} type={showPassword ? "text" : "password"} required minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} /><button type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? "隐藏" : "显示"}</button></div><small>至少 8 位；请勿与其他网站共用密码。</small></label>
+      {mode === "signup" && <label>团队邀请码<input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="由平台主管理员发放" required autoComplete="off" /></label>}
+      <button className="primary" disabled={busy || !email || password.length < 8 || (mode === "signup" && !inviteCode.trim())} onClick={() => submit(mode)}>{busy ? "正在处理…" : mode === "login" ? "登录并进入工作台" : "注册账号"}</button>
+      {message && <p className="form-message" role="status" aria-live="polite">{message}</p>}
     </div>
   );
 }
