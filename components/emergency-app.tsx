@@ -794,7 +794,7 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
   async function createInvite(form: FormData) {
     if (!user || role !== "admin") return;
     const code = `XIHU-${crypto.randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`;
-    const { error } = await createClient().from("team_invites").insert({ label: String(form.get("label")), code_hash: await hashInviteCode(code), role: String(form.get("role")), organization_id: String(form.get("organizationId") || "") || null, max_uses: Number(form.get("maxUses") || 10), expires_at: String(form.get("expiresAt") || "") || null, created_by: user.id });
+    const { error } = await createClient().from("team_invites").insert({ label: String(form.get("label")), code_hash: await hashInviteCode(code), role: String(form.get("role")), organization_id: String(form.get("organizationId") || "") || null, max_uses: Number(form.get("maxUses") || 100), expires_at: String(form.get("expiresAt") || "") || null, created_by: user.id });
     if (error) return setNotice(error.message); setNewInviteCode(code); await audit("创建团队邀请码", "team_invite", undefined, { label: String(form.get("label")) }); await load();
   }
   async function disableInvite(invite: TeamInvite) { if (!user || role !== "admin") return; if (!confirmAction(`确认停用邀请码“${invite.label}”？尚未使用的成员将不能再凭此注册。`)) return; const { error } = await createClient().from("team_invites").update({ active: false }).eq("id", invite.id); if (error) return setNotice(error.message); await audit("停用团队邀请码", "team_invite", invite.id); await load(); }
