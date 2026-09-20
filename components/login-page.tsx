@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthPanel } from "./auth-panel";
+import { LogoMark } from "./logo-mark";
 import { PLATFORM_DOMAIN, safeReturnUrl } from "@/lib/product-routing";
 
 export function LoginPage({ next }: { next?: string }) {
@@ -8,7 +9,7 @@ export function LoginPage({ next }: { next?: string }) {
   const confirmUrl = `https://${PLATFORM_DOMAIN}/auth/confirm?next=${encodeURIComponent(destination)}`;
   return <main className="login-page">
     <section className="login-intro">
-      <div className="login-brand"><span>湖</span><div><b>西湖应急</b><small>综合管理平台</small></div></div>
+      <div className="login-brand"><LogoMark size={46} outline="#78d8d0" /><div><b>西湖应急</b><small>综合管理平台</small></div></div>
       <span className="eyebrow">UNIFIED EMERGENCY OPERATIONS</span>
       <h1>一个入口，协同处置全流程</h1>
       <p>登录后进入综合门户，再按职责进入监测预警、预案、指挥、资源、风险普查等业务子产品。</p>
