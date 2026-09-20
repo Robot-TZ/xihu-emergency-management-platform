@@ -55,3 +55,35 @@ test("professional plan center explains scoring and starts versioned task templa
   await expect(page.getByText("已启动《西湖区暴雨内涝应急处置预案》V1，并按模板生成 3 条指令。")).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "排涝作业" }).filter({ hasText: "属地应急队" })).toBeVisible();
 });
+
+test("resource center recommends dispatch candidates with explainable evidence", async ({ page }) => {
+  await page.getByRole("button", { name: "初始化产品数据" }).click();
+  await page.getByRole("button", { name: /应急资源/ }).click();
+  await expect(page.getByRole("heading", { name: "应急资源", exact: true })).toBeVisible();
+  await expect(page.getByText("转塘街道应急队").first()).toBeVisible();
+  await expect(page.getByText(/能力命中：/).first()).toBeVisible();
+});
+
+test("inventory inbound document posts and changes the balance", async ({ page }) => {
+  await page.getByRole("button", { name: "初始化产品数据" }).click();
+  await page.getByRole("button", { name: /物资库存/ }).click();
+  const form = page.getByRole("heading", { name: "新建库存业务单" }).locator("..");
+  await form.locator('select[name="toWarehouseId"]').selectOption("wh-district");
+  await form.locator('select[name="itemId"]').selectOption("item-pump");
+  await form.locator('input[name="quantity"]').fill("2");
+  await form.getByRole("button", { name: "创建草稿" }).click();
+  await page.getByRole("button", { name: "提交审核" }).click();
+  await page.getByRole("button", { name: "审核记账" }).click();
+  await expect(page.getByText("单据已审核，库存余额已原子更新。")).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "移动排涝泵" }).filter({ hasText: "10 台" })).toBeVisible();
+});
+
+test("risk confirmation creates an idempotent simulated writeback result", async ({ page }) => {
+  await page.getByRole("button", { name: "初始化产品数据" }).click();
+  await page.getByRole("button", { name: /风险普查/ }).click();
+  const row = page.getByRole("row").filter({ hasText: "转塘演示安置点A" });
+  await expect(row.getByText("隐患等级")).toBeVisible();
+  await row.getByRole("button", { name: "确认并回写" }).click();
+  await expect(page.getByText("已确认并通过模拟适配器完成回写。")).toBeVisible();
+  await expect(row.getByText("IRS_SIM · succeeded")).toBeVisible();
+});

@@ -86,13 +86,147 @@ export type RiskRecord = {
   change_type: "新增" | "变更" | "删减";
   old_value: string;
   new_value: string;
-  status: "待派单" | "待确认" | "退回核查" | "已回写";
+  status: "待派单" | "待确认" | "退回核查" | "待回写" | "回写失败" | "已回写";
   note?: string;
   assigned_org?: string;
   assignee_user_id?: string | null;
   assignee_organization_id?: string | null;
   writeback_message?: string;
+  batch_id?: string | null;
+  source_record_id?: string;
+  rejection_reason?: string;
+  confirmed_at?: string | null;
   created_at: string;
+};
+
+export type ResourceAssetType = "team" | "expert" | "vehicle" | "equipment" | "facility";
+export type ResourceAsset = {
+  id: string;
+  user_id?: string;
+  organization_id?: string | null;
+  code: string;
+  name: string;
+  asset_type: ResourceAssetType;
+  area: string;
+  address: string;
+  longitude?: number | null;
+  latitude?: number | null;
+  contact_name: string;
+  contact_phone: string;
+  capabilities: string[];
+  capacity: number;
+  status: "available" | "dispatched" | "maintenance" | "offline";
+  maintenance_due_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type Warehouse = {
+  id: string;
+  user_id?: string;
+  organization_id?: string | null;
+  code: string;
+  name: string;
+  area: string;
+  address: string;
+  contact_name: string;
+  contact_phone: string;
+  active: boolean;
+  created_at: string;
+};
+
+export type InventoryItem = {
+  id: string;
+  user_id?: string;
+  sku: string;
+  name: string;
+  category: string;
+  unit: string;
+  min_quantity: number;
+  max_quantity: number;
+  maintenance_days: number;
+  created_at: string;
+};
+
+export type InventoryBalance = {
+  id: string;
+  warehouse_id: string;
+  item_id: string;
+  quantity: number;
+  reserved_quantity: number;
+  updated_at: string;
+};
+
+export type InventoryDocumentType = "inbound" | "outbound" | "transfer";
+export type InventoryDocument = {
+  id: string;
+  user_id?: string;
+  document_no: string;
+  document_type: InventoryDocumentType;
+  from_warehouse_id?: string | null;
+  to_warehouse_id?: string | null;
+  status: "draft" | "pending" | "approved" | "cancelled";
+  note: string;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  cancelled_at?: string | null;
+  created_at: string;
+};
+
+export type InventoryDocumentLine = {
+  id: string;
+  document_id: string;
+  item_id: string;
+  quantity: number;
+  created_at: string;
+};
+
+export type InventoryMovement = {
+  id: string;
+  document_id: string;
+  warehouse_id: string;
+  item_id: string;
+  quantity_delta: number;
+  reversal_of?: string | null;
+  created_at: string;
+};
+
+export type RiskImportBatch = {
+  id: string;
+  user_id?: string;
+  batch_no: string;
+  source_code: string;
+  file_name: string;
+  status: "processing" | "completed" | "failed";
+  total_count: number;
+  created_count: number;
+  changed_count: number;
+  deleted_count: number;
+  error_message?: string;
+  created_at: string;
+};
+
+export type RiskFieldChange = {
+  id: string;
+  risk_record_id: string;
+  field_name: string;
+  old_value: string;
+  new_value: string;
+  created_at: string;
+};
+
+export type RiskWritebackJob = {
+  id: string;
+  risk_record_id: string;
+  adapter_code: string;
+  idempotency_key: string;
+  status: "pending" | "processing" | "succeeded" | "failed";
+  attempt_count: number;
+  response_payload?: Record<string, unknown>;
+  error_message?: string;
+  next_retry_at?: string | null;
+  created_at: string;
+  updated_at?: string;
 };
 export type ActivityLog = {
   id: string;

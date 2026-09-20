@@ -7,14 +7,25 @@ import { AuthPanel } from "./auth-panel";
 import { demoEvent, demoRisks, demoTasks } from "@/lib/demo-data";
 import { demoPlans, demoPlanTaskTemplates, demoPlanVersions } from "@/lib/plan-demo";
 import { parseTaskTemplates } from "@/lib/plan-engine";
+import { demoInventoryBalances, demoInventoryDocumentLines, demoInventoryDocuments, demoInventoryMovements, demoInventoryItems, demoResources, demoRiskBatches, demoRiskFieldChanges, demoRiskWritebackJobs, demoWarehouses } from "@/lib/operations-demo";
+import { applyInventoryDeltas } from "@/lib/resource-engine";
+import { downloadCsv, downloadWorkbook, readWorkbook, type SheetRow } from "@/lib/spreadsheet";
 import { demoOperationalRecords, moduleMeta, productPages, type ProductPage } from "@/lib/product-catalog";
-import type { ActivityLog, EmergencyPlan, EventRecord, OperationalRecord, Organization, OrganizationMember, PlanTaskTemplate, PlanVersion, ProductModule, Profile, RiskRecord, Role, TaskRecord, TeamInvite } from "@/lib/types";
-import { CityPage, DataPage, DutyPage, InventoryPage, LogsPage, OverviewPage, PortalPage, ResourcesPage, TyphoonPage } from "./product-pages";
-import { AdminPage, CommandPage, RisksPage } from "./workflow-pages";
+import type { ActivityLog, EmergencyPlan, EventRecord, InventoryBalance, InventoryDocument, InventoryDocumentLine, InventoryItem, InventoryMovement, OperationalRecord, Organization, OrganizationMember, PlanTaskTemplate, PlanVersion, ProductModule, Profile, ResourceAsset, RiskFieldChange, RiskImportBatch, RiskRecord, RiskWritebackJob, Role, TaskRecord, TeamInvite, Warehouse } from "@/lib/types";
+import { CityPage, DataPage, DutyPage, LogsPage, OverviewPage, PortalPage, ResourcesPage, TyphoonPage } from "./product-pages";
+import { AdminPage, CommandPage } from "./workflow-pages";
 import { PlanCenterPage, type PlanLifecycleAction } from "./plan-center";
+import { InventoryCenterPage, ResourceCenterPage } from "./resource-inventory-center";
+import { RiskSurveyCenterPage } from "./risk-survey-center";
 
-export type ProductSnapshot = { events: EventRecord[]; tasks: TaskRecord[]; risks: RiskRecord[]; logs: ActivityLog[]; records: OperationalRecord[]; plans: EmergencyPlan[]; planVersions: PlanVersion[]; planTemplates: PlanTaskTemplate[] };
-const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [], plans: [], planVersions: [], planTemplates: [] };
+export type ProductSnapshot = {
+  events: EventRecord[]; tasks: TaskRecord[]; risks: RiskRecord[]; logs: ActivityLog[]; records: OperationalRecord[];
+  plans: EmergencyPlan[]; planVersions: PlanVersion[]; planTemplates: PlanTaskTemplate[];
+  resources: ResourceAsset[]; warehouses: Warehouse[]; inventoryItems: InventoryItem[]; inventoryBalances: InventoryBalance[];
+  inventoryDocuments: InventoryDocument[]; inventoryDocumentLines: InventoryDocumentLine[]; inventoryMovements: InventoryMovement[];
+  riskBatches: RiskImportBatch[]; riskChanges: RiskFieldChange[]; riskWritebackJobs: RiskWritebackJob[];
+};
+const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [], plans: [], planVersions: [], planTemplates: [], resources: [], warehouses: [], inventoryItems: [], inventoryBalances: [], inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: [], riskChanges: [], riskWritebackJobs: [] };
 const LOCAL_KEY = "xihu-emergency-product-v2";
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
@@ -27,6 +38,10 @@ function forInsert<T extends object>(record: T): Omit<T, "id" | "created_at" | "
   const payload = { ...record } as T & { id?: unknown; created_at?: unknown; updated_at?: unknown };
   delete payload.id; delete payload.created_at; delete payload.updated_at;
   return payload;
+}
+function sheetCell(row: SheetRow, ...keys: string[]) {
+  const key = keys.find((candidate) => row[candidate] !== undefined);
+  return key ? String(row[key] ?? "").trim() : "";
 }
 
 function isSnapshot(value: unknown): value is ProductSnapshot {
@@ -43,9 +58,19 @@ function loadLocal(): ProductSnapshot {
       plans: Array.isArray(parsed.plans) ? parsed.plans : demoPlans,
       planVersions: Array.isArray(parsed.planVersions) ? parsed.planVersions : demoPlanVersions,
       planTemplates: Array.isArray(parsed.planTemplates) ? parsed.planTemplates : demoPlanTaskTemplates,
+      resources: Array.isArray(parsed.resources) ? parsed.resources : demoResources,
+      warehouses: Array.isArray(parsed.warehouses) ? parsed.warehouses : demoWarehouses,
+      inventoryItems: Array.isArray(parsed.inventoryItems) ? parsed.inventoryItems : demoInventoryItems,
+      inventoryBalances: Array.isArray(parsed.inventoryBalances) ? parsed.inventoryBalances : demoInventoryBalances,
+      inventoryDocuments: Array.isArray(parsed.inventoryDocuments) ? parsed.inventoryDocuments : demoInventoryDocuments,
+      inventoryDocumentLines: Array.isArray(parsed.inventoryDocumentLines) ? parsed.inventoryDocumentLines : demoInventoryDocumentLines,
+      inventoryMovements: Array.isArray(parsed.inventoryMovements) ? parsed.inventoryMovements : demoInventoryMovements,
+      riskBatches: Array.isArray(parsed.riskBatches) ? parsed.riskBatches : demoRiskBatches,
+      riskChanges: Array.isArray(parsed.riskChanges) ? parsed.riskChanges : demoRiskFieldChanges,
+      riskWritebackJobs: Array.isArray(parsed.riskWritebackJobs) ? parsed.riskWritebackJobs : demoRiskWritebackJobs,
     };
   } catch { /* corrupted visitor data falls back to safe defaults */ }
-  return { ...empty, records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates };
+  return { ...empty, records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: demoInventoryDocuments, inventoryDocumentLines: demoInventoryDocumentLines, inventoryMovements: demoInventoryMovements, riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: demoRiskWritebackJobs };
 }
 function withLocalLog(data: ProductSnapshot, action: string, entity_type: string, detail: Record<string, unknown> = {}): ProductSnapshot {
   return { ...data, logs: [{ id: uid(), action, entity_type, detail, created_at: now() }, ...data.logs] };
@@ -80,7 +105,7 @@ export function EmergencyApp() {
     const currentActive = profileResult.data?.active !== false;
     setRole(currentRole);
     setAccountActive(currentActive);
-    const [events, tasks, risks, logs, records, plans, planVersions, planTemplates, orgs, orgMembers, visibleProfiles] = await Promise.all([
+    const [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, orgs, orgMembers, visibleProfiles] = await Promise.all([
       supabase.from("events").select("*").order("created_at", { ascending: false }),
       supabase.from("tasks").select("*").order("created_at", { ascending: false }),
       supabase.from("risk_records").select("*").order("created_at", { ascending: false }),
@@ -89,13 +114,23 @@ export function EmergencyApp() {
       supabase.from("emergency_plans").select("*").order("updated_at", { ascending: false }),
       supabase.from("plan_versions").select("*").order("version_no", { ascending: false }),
       supabase.from("plan_task_templates").select("*").order("sort_order"),
+      supabase.from("resource_assets").select("*").order("created_at", { ascending: false }),
+      supabase.from("warehouses").select("*").order("name"),
+      supabase.from("inventory_items").select("*").order("name"),
+      supabase.from("inventory_balances").select("*").order("updated_at", { ascending: false }),
+      supabase.from("inventory_documents").select("*").order("created_at", { ascending: false }),
+      supabase.from("inventory_document_lines").select("*").order("created_at"),
+      supabase.from("inventory_movements").select("*").order("created_at", { ascending: false }),
+      supabase.from("risk_import_batches").select("*").order("created_at", { ascending: false }),
+      supabase.from("risk_field_changes").select("*").order("created_at"),
+      supabase.from("risk_writeback_jobs").select("*").order("created_at", { ascending: false }),
       supabase.from("organizations").select("*").order("name"),
       supabase.from("organization_members").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("id,email,display_name,role,organization,job_title,active,created_at").order("created_at", { ascending: false }),
     ]);
-    const failure = [events, tasks, risks, logs, records, plans, planVersions, planTemplates, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
+    const failure = [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
     if (failure) setNotice("数据读取失败：" + failure.message);
-    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[], plans: (plans.data || []) as EmergencyPlan[], planVersions: (planVersions.data || []) as PlanVersion[], planTemplates: (planTemplates.data || []) as PlanTaskTemplate[] });
+    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[], plans: (plans.data || []) as EmergencyPlan[], planVersions: (planVersions.data || []) as PlanVersion[], planTemplates: (planTemplates.data || []) as PlanTaskTemplate[], resources: (resources.data || []) as ResourceAsset[], warehouses: (warehouses.data || []) as Warehouse[], inventoryItems: (inventoryItems.data || []) as InventoryItem[], inventoryBalances: (inventoryBalances.data || []) as InventoryBalance[], inventoryDocuments: (inventoryDocuments.data || []) as InventoryDocument[], inventoryDocumentLines: (inventoryDocumentLines.data || []) as InventoryDocumentLine[], inventoryMovements: (inventoryMovements.data || []) as InventoryMovement[], riskBatches: (riskBatches.data || []) as RiskImportBatch[], riskChanges: (riskChanges.data || []) as RiskFieldChange[], riskWritebackJobs: (riskWritebackJobs.data || []) as RiskWritebackJob[] });
     setOrganizations((orgs.data || []) as Organization[]);
     setMemberships((orgMembers.data || []) as OrganizationMember[]);
     setProfiles((visibleProfiles.data || []) as Profile[]);
@@ -121,7 +156,7 @@ export function EmergencyApp() {
 
   async function seed() {
     if (!requireWrite()) return;
-    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
+    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: [] }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
     const supabase = createClient();
     if (!data.events.length) await supabase.from("events").insert({ ...forInsert(demoEvent), user_id: user.id });
     if (!data.records.length) await supabase.from("operational_records").insert(demoOperationalRecords.map((record) => ({ ...forInsert(record), user_id: user.id })));
@@ -263,23 +298,154 @@ export function EmergencyApp() {
     setPage("command"); setNotice(`已启动《${plan.title}》V${version.version_no}，并按模板生成 ${tasks.length} 条指令。`);
   }
 
+  async function addResource(form: FormData) {
+    if (!requireWrite()) return;
+    const record: ResourceAsset = { id: uid(), code: String(form.get("code")).trim().toUpperCase(), name: String(form.get("name")), asset_type: String(form.get("assetType")) as ResourceAsset["asset_type"], area: String(form.get("area") || "全区"), address: String(form.get("address") || ""), contact_name: String(form.get("contactName") || ""), contact_phone: String(form.get("contactPhone") || ""), capabilities: String(form.get("capabilities") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), capacity: Number(form.get("capacity") || 0), status: "available", maintenance_due_at: String(form.get("maintenanceDueAt") || "") || null, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, resources: [record, ...current.resources] }, "新增应急资源", "resource_asset", { code: record.code }));
+    else { const { error } = await createClient().from("resource_assets").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增应急资源", "resource_asset", undefined, { code: record.code }); await load(); }
+    setNotice("应急资源已保存。");
+  }
+  async function updateResourceStatus(resource: ResourceAsset, status: ResourceAsset["status"]) {
+    if (!requireWrite()) return;
+    if (!user) setData((current) => withLocalLog({ ...current, resources: current.resources.map((item) => item.id === resource.id ? { ...item, status, updated_at: now() } : item) }, "更新资源状态", "resource_asset", { status }));
+    else { const { error } = await createClient().from("resource_assets").update({ status, updated_at: now() }).eq("id", resource.id); if (error) return setNotice(error.message); await audit("更新资源状态", "resource_asset", resource.id, { status }); await load(); }
+  }
+  async function importResources(file?: File) {
+    if (!file || !requireWrite()) return;
+    try {
+      const rows = await readWorkbook(file);
+      const records = rows.map((row): ResourceAsset => ({ id: uid(), code: sheetCell(row, "编码", "code").toUpperCase(), name: sheetCell(row, "名称", "name"), asset_type: (sheetCell(row, "类型", "asset_type") || "equipment") as ResourceAsset["asset_type"], area: sheetCell(row, "区域", "area") || "全区", address: sheetCell(row, "地址", "address"), contact_name: sheetCell(row, "联系人", "contact_name"), contact_phone: sheetCell(row, "电话", "contact_phone"), capabilities: sheetCell(row, "保障能力", "capabilities").split(/[,，]/).filter(Boolean), capacity: Number(sheetCell(row, "能力值", "capacity") || 1), status: "available", maintenance_due_at: sheetCell(row, "维保到期", "maintenance_due_at") || null, created_at: now() })).filter((item) => item.code && item.name);
+      if (!records.length) throw new Error("未识别到有效资源行");
+      if (!user) setData((current) => withLocalLog({ ...current, resources: [...records, ...current.resources] }, "Excel导入应急资源", "resource_asset", { count: records.length }));
+      else { const { error } = await createClient().from("resource_assets").upsert(records.map((record) => ({ ...forInsert(record), user_id: user.id })), { onConflict: "code" }); if (error) throw error; await audit("Excel导入应急资源", "resource_asset", undefined, { count: records.length }); await load(); }
+      setNotice(`已导入 ${records.length} 条应急资源。`);
+    } catch (error) { setNotice(`资源导入失败：${error instanceof Error ? error.message : "文件格式不正确"}`); }
+  }
+  async function exportResources() { await downloadWorkbook("应急资源台账.xlsx", "应急资源", data.resources.map((item) => ({ "编码": item.code, "名称": item.name, "类型": item.asset_type, "区域": item.area, "地址": item.address, "联系人": item.contact_name, "电话": item.contact_phone, "保障能力": item.capabilities.join(","), "能力值": item.capacity, "状态": item.status, "维保到期": item.maintenance_due_at || "" }))); }
+
+  async function addWarehouse(form: FormData) {
+    if (!requireWrite()) return;
+    const record: Warehouse = { id: uid(), code: String(form.get("code")).trim().toUpperCase(), name: String(form.get("name")), area: String(form.get("area")), address: String(form.get("address") || ""), contact_name: String(form.get("contactName") || ""), contact_phone: String(form.get("contactPhone") || ""), active: true, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, warehouses: [record, ...current.warehouses] }, "新增仓库", "warehouse"));
+    else { const { error } = await createClient().from("warehouses").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增仓库", "warehouse"); await load(); }
+  }
+  async function addInventoryItem(form: FormData) {
+    if (!requireWrite()) return;
+    const record: InventoryItem = { id: uid(), sku: String(form.get("sku")).trim().toUpperCase(), name: String(form.get("name")), category: String(form.get("category")), unit: String(form.get("unit")), min_quantity: Number(form.get("minQuantity") || 0), max_quantity: Number(form.get("maxQuantity") || 0), maintenance_days: Number(form.get("maintenanceDays") || 365), created_at: now() };
+    if (record.max_quantity < record.min_quantity) return setNotice("库存上限不能低于下限。");
+    if (!user) setData((current) => withLocalLog({ ...current, inventoryItems: [record, ...current.inventoryItems] }, "新增物资目录", "inventory_item"));
+    else { const { error } = await createClient().from("inventory_items").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增物资目录", "inventory_item"); await load(); }
+  }
+  async function createInventoryDocument(form: FormData) {
+    if (!requireWrite()) return;
+    const documentType = String(form.get("documentType")) as InventoryDocument["document_type"];
+    const fromWarehouseId = String(form.get("fromWarehouseId") || "") || null; const toWarehouseId = String(form.get("toWarehouseId") || "") || null;
+    if ((documentType === "inbound" && !toWarehouseId) || (documentType === "outbound" && !fromWarehouseId) || (documentType === "transfer" && (!fromWarehouseId || !toWarehouseId || fromWarehouseId === toWarehouseId))) return setNotice("请按单据类型正确选择调出/调入仓库。");
+    const document: InventoryDocument = { id: uid(), document_no: `XH-${documentType.toUpperCase()}-${Date.now()}`, document_type: documentType, from_warehouse_id: fromWarehouseId, to_warehouse_id: toWarehouseId, status: "draft", note: String(form.get("note") || ""), created_at: now() };
+    const line: InventoryDocumentLine = { id: uid(), document_id: document.id, item_id: String(form.get("itemId")), quantity: Number(form.get("quantity")), created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, inventoryDocuments: [document, ...current.inventoryDocuments], inventoryDocumentLines: [line, ...current.inventoryDocumentLines] }, "创建库存单据", "inventory_document", { documentNo: document.document_no }));
+    else { const supabase = createClient(); const created = await supabase.from("inventory_documents").insert({ ...forInsert(document), user_id: user.id }).select("id").single(); if (created.error) return setNotice(created.error.message); const lineResult = await supabase.from("inventory_document_lines").insert({ item_id: line.item_id, quantity: line.quantity, document_id: created.data.id }); if (lineResult.error) { await supabase.from("inventory_documents").delete().eq("id", created.data.id); return setNotice(lineResult.error.message); } await audit("创建库存单据", "inventory_document", created.data.id); await load(); }
+    setNotice("库存单据草稿已创建。");
+  }
+  async function submitInventoryDocument(document: InventoryDocument) {
+    if (!requireWrite()) return;
+    if (!user) setData((current) => withLocalLog({ ...current, inventoryDocuments: current.inventoryDocuments.map((item) => item.id === document.id ? { ...item, status: "pending" } : item) }, "提交库存单据审核", "inventory_document"));
+    else { const { error } = await createClient().from("inventory_documents").update({ status: "pending", updated_at: now() }).eq("id", document.id); if (error) return setNotice(error.message); await audit("提交库存单据审核", "inventory_document", document.id); await load(); }
+  }
+  async function postInventoryDocument(document: InventoryDocument, action: "approve" | "cancel") {
+    if (role !== "admin" && user) return setNotice("只有管理员可以审核记账或撤销单据。");
+    if (!user) {
+      try {
+        setData((current) => {
+          const documentLines = current.inventoryDocumentLines.filter((line) => line.document_id === document.id);
+          const baseMovements = action === "approve" ? documentLines.flatMap((line) => document.document_type === "inbound" ? [{ warehouse_id: document.to_warehouse_id!, item_id: line.item_id, quantity_delta: line.quantity }] : document.document_type === "outbound" ? [{ warehouse_id: document.from_warehouse_id!, item_id: line.item_id, quantity_delta: -line.quantity }] : [{ warehouse_id: document.from_warehouse_id!, item_id: line.item_id, quantity_delta: -line.quantity }, { warehouse_id: document.to_warehouse_id!, item_id: line.item_id, quantity_delta: line.quantity }]) : current.inventoryMovements.filter((movement) => movement.document_id === document.id && !movement.reversal_of).map((movement) => ({ warehouse_id: movement.warehouse_id, item_id: movement.item_id, quantity_delta: -movement.quantity_delta }));
+          const balances = applyInventoryDeltas(current.inventoryBalances, baseMovements, now());
+          const movements: InventoryMovement[] = baseMovements.map((movement) => ({ id: uid(), document_id: document.id, ...movement, reversal_of: action === "cancel" ? current.inventoryMovements.find((item) => item.document_id === document.id && item.warehouse_id === movement.warehouse_id && item.item_id === movement.item_id && !item.reversal_of)?.id || null : null, created_at: now() }));
+          return withLocalLog({ ...current, inventoryBalances: balances, inventoryMovements: [...movements, ...current.inventoryMovements], inventoryDocuments: current.inventoryDocuments.map((item) => item.id === document.id ? { ...item, status: action === "approve" ? "approved" : "cancelled", approved_at: action === "approve" ? now() : item.approved_at, cancelled_at: action === "cancel" ? now() : item.cancelled_at } : item) }, action === "approve" ? "审核库存单据并记账" : "撤销库存单据并冲销", "inventory_document");
+        });
+      } catch (error) { return setNotice(error instanceof Error ? error.message : "库存记账失败。"); }
+    } else { const { error } = await createClient().rpc("post_inventory_document", { p_document_id: document.id, p_action: action }); if (error) return setNotice(error.message); await audit(action === "approve" ? "审核库存单据并记账" : "撤销库存单据并冲销", "inventory_document", document.id); await load(); }
+    setNotice(action === "approve" ? "单据已审核，库存余额已原子更新。" : "单据已撤销，库存已反向冲销。");
+  }
+  async function importInventory(file?: File) {
+    if (!file || !requireWrite()) return;
+    try {
+      const rows = await readWorkbook(file); let warehouseCount = 0; let itemCount = 0;
+      for (const row of rows) {
+        const kind = sheetCell(row, "数据类型", "type");
+        if (kind === "仓库" || kind === "warehouse") { const form = new FormData(); form.set("code", sheetCell(row, "编码", "code")); form.set("name", sheetCell(row, "名称", "name")); form.set("area", sheetCell(row, "区域", "area")); form.set("address", sheetCell(row, "地址", "address")); form.set("contactName", sheetCell(row, "联系人", "contact_name")); form.set("contactPhone", sheetCell(row, "电话", "contact_phone")); await addWarehouse(form); warehouseCount++; }
+        if (kind === "物资" || kind === "item") { const form = new FormData(); form.set("sku", sheetCell(row, "编码", "sku")); form.set("name", sheetCell(row, "名称", "name")); form.set("category", sheetCell(row, "分类", "category")); form.set("unit", sheetCell(row, "单位", "unit")); form.set("minQuantity", sheetCell(row, "库存下限", "min_quantity")); form.set("maxQuantity", sheetCell(row, "库存上限", "max_quantity")); form.set("maintenanceDays", sheetCell(row, "维保周期天", "maintenance_days")); await addInventoryItem(form); itemCount++; }
+      }
+      if (!warehouseCount && !itemCount) throw new Error("请在“数据类型”列填写“仓库”或“物资”");
+      setNotice(`导入完成：${warehouseCount} 个仓库，${itemCount} 种物资。`);
+    } catch (error) { setNotice(`库存导入失败：${error instanceof Error ? error.message : "文件格式不正确"}`); }
+  }
+  async function exportInventory() { await downloadWorkbook("仓储物资台账.xlsx", "库存余额", data.inventoryBalances.map((balance) => { const warehouse = data.warehouses.find((item) => item.id === balance.warehouse_id); const item = data.inventoryItems.find((candidate) => candidate.id === balance.item_id); return { "仓库编码": warehouse?.code, "仓库": warehouse?.name, "物资编码": item?.sku, "物资": item?.name, "单位": item?.unit, "库存": balance.quantity, "预留": balance.reserved_quantity, "可用": balance.quantity - balance.reserved_quantity, "库存下限": item?.min_quantity }; })); }
+
   async function addRisk(form: FormData) {
     if (!requireWrite()) return;
-    const assigneeUserId = String(form.get("assigneeUserId") || "") || null;
-    const assigneeOrganizationId = String(form.get("assigneeOrganizationId") || "") || null;
-    if (assigneeUserId && assigneeOrganizationId) return setNotice("承办人与承办组织只能选择一项。");
-    const targetUser = profiles.find((item) => item.id === assigneeUserId);
-    const targetOrg = organizations.find((item) => item.id === assigneeOrganizationId);
-    const assignedOrg = targetOrg?.name || targetUser?.display_name || targetUser?.email || "";
-    const record: RiskRecord = { id: uid(), name: String(form.get("name")), area: String(form.get("area")), record_type: String(form.get("recordType")), source: String(form.get("source")), change_type: String(form.get("changeType")) as RiskRecord["change_type"], old_value: String(form.get("oldValue") || ""), new_value: String(form.get("newValue")), assigned_org: assignedOrg, assignee_user_id: assigneeUserId, assignee_organization_id: assigneeOrganizationId, status: "待派单", created_at: now() };
-    if (!user) setData((current) => withLocalLog({ ...current, risks: [record, ...current.risks] }, "新增风险差异工单", "risk"));
-    else { const { error } = await createClient().from("risk_records").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增风险差异工单", "risk"); await load(); }
+    const record: RiskRecord = { id: uid(), name: String(form.get("name")), area: String(form.get("area")), record_type: String(form.get("recordType")), source: String(form.get("source")), change_type: String(form.get("changeType")) as RiskRecord["change_type"], old_value: String(form.get("oldValue") || ""), new_value: String(form.get("newValue")), assigned_org: "", assignee_user_id: null, assignee_organization_id: null, status: "待派单", source_record_id: `MANUAL-${Date.now()}`, created_at: now() };
+    const change: RiskFieldChange = { id: uid(), risk_record_id: record.id, field_name: "主要内容", old_value: record.old_value, new_value: record.new_value, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, risks: [record, ...current.risks], riskChanges: [change, ...current.riskChanges] }, "新增风险差异工单", "risk"));
+    else { const created = await createClient().from("risk_records").insert({ ...forInsert(record), user_id: user.id }).select("id").single(); if (created.error) return setNotice(created.error.message); const { error } = await createClient().from("risk_field_changes").insert({ risk_record_id: created.data.id, field_name: change.field_name, old_value: change.old_value, new_value: change.new_value }); if (error) return setNotice(error.message); await audit("新增风险差异工单", "risk", created.data.id); await load(); }
   }
-  async function progressRisk(risk: RiskRecord, status: RiskRecord["status"]) {
+  async function bulkAssignRisks(ids: string[], organizationId: string, profileId: string) {
+    if (!requireWrite() || !ids.length) return;
+    if (user && role !== "admin") return setNotice("批量修改归属只允许管理员操作。");
+    const org = organizations.find((item) => item.id === organizationId); const profile = profiles.find((item) => item.id === profileId);
+    const assignedOrg = org?.name || profile?.display_name || profile?.email || "";
+    if (!user) setData((current) => withLocalLog({ ...current, risks: current.risks.map((item) => ids.includes(item.id) ? { ...item, assigned_org: assignedOrg, assignee_organization_id: organizationId || null, assignee_user_id: profileId || null, status: "待确认" } : item) }, "批量派发风险工单", "risk", { count: ids.length }));
+    else { const { error } = await createClient().from("risk_records").update({ assigned_org: assignedOrg, assignee_organization_id: organizationId || null, assignee_user_id: profileId || null, status: "待确认", updated_at: now() }).in("id", ids); if (error) return setNotice(error.message); await audit("批量派发风险工单", "risk", undefined, { count: ids.length }); await load(); }
+    setNotice(`已批量派发 ${ids.length} 条风险工单。`);
+  }
+  async function transitionRisk(risk: RiskRecord, action: "dispatch" | "confirm" | "return", reason = "") {
     if (!requireWrite()) return;
-    const extra = status === "已回写" ? { writeback_message: "模拟适配器回写成功；真实数据仓待联调" } : {};
-    if (!user) setData((current) => withLocalLog({ ...current, risks: current.risks.map((item) => item.id === risk.id ? { ...item, status, ...extra } : item) }, "更新风险工单", "risk", { status }));
-    else { const { error } = await createClient().from("risk_records").update({ status, ...extra, updated_at: now() }).eq("id", risk.id); if (error) return setNotice(error.message); await audit("更新风险工单", "risk", risk.id, { status }); await load(); }
+    if (action === "dispatch") {
+      if (!user) setData((current) => withLocalLog({ ...current, risks: current.risks.map((item) => item.id === risk.id ? { ...item, status: "待确认" } : item) }, "派发风险工单", "risk"));
+      else { const { error } = await createClient().from("risk_records").update({ status: "待确认", updated_at: now() }).eq("id", risk.id); if (error) return setNotice(error.message); await audit("派发风险工单", "risk", risk.id); await load(); }
+      return;
+    }
+    if (action === "return") {
+      if (!reason.trim()) return setNotice("退回时必须填写理由。");
+      if (!user) setData((current) => withLocalLog({ ...current, risks: current.risks.map((item) => item.id === risk.id ? { ...item, status: "退回核查", rejection_reason: reason } : item) }, "退回风险工单", "risk", { reason }));
+      else { const { error } = await createClient().from("risk_records").update({ status: "退回核查", rejection_reason: reason, updated_at: now() }).eq("id", risk.id); if (error) return setNotice(error.message); await audit("退回风险工单", "risk", risk.id, { reason }); await load(); }
+      return;
+    }
+    const adapterCode = risk.source.includes("数据仓") ? "WAREHOUSE_SIM" : "IRS_SIM";
+    const success = !risk.name.includes("失败");
+    if (!user) {
+      const job: RiskWritebackJob = { id: uid(), risk_record_id: risk.id, adapter_code: adapterCode, idempotency_key: `${adapterCode}:${risk.id}`, status: success ? "succeeded" : "failed", attempt_count: 1, response_payload: success ? { simulated: true } : {}, error_message: success ? "" : "模拟网络超时", next_retry_at: success ? null : new Date(Date.now() + 300000).toISOString(), created_at: now() };
+      setData((current) => withLocalLog({ ...current, risks: current.risks.map((item) => item.id === risk.id ? { ...item, status: success ? "已回写" : "回写失败", confirmed_at: now(), writeback_message: success ? "模拟适配器已成功接收" : "模拟网络超时" } : item), riskWritebackJobs: [job, ...current.riskWritebackJobs.filter((item) => item.risk_record_id !== risk.id)] }, "确认并回写风险数据", "risk_writeback", { success }));
+    } else {
+      const supabase = createClient(); const queued = await supabase.rpc("queue_risk_writeback", { p_risk_id: risk.id, p_adapter_code: adapterCode }); if (queued.error) return setNotice(queued.error.message);
+      const completed = await supabase.rpc("complete_simulated_risk_writeback", { p_job_id: queued.data, p_success: success, p_error: success ? "" : "模拟网络超时" }); if (completed.error) return setNotice(completed.error.message);
+      await audit("确认并回写风险数据", "risk_writeback", risk.id, { adapterCode, success }); await load();
+    }
+    setNotice(success ? "已确认并通过模拟适配器完成回写。" : "模拟回写失败，已记录重试和对账状态。");
+  }
+  async function retryRiskWriteback(job: RiskWritebackJob) {
+    if (!requireWrite()) return;
+    if (!user) setData((current) => withLocalLog({ ...current, riskWritebackJobs: current.riskWritebackJobs.map((item) => item.id === job.id ? { ...item, status: "succeeded", attempt_count: item.attempt_count + 1, error_message: "", next_retry_at: null } : item), risks: current.risks.map((item) => item.id === job.risk_record_id ? { ...item, status: "已回写", writeback_message: "模拟适配器重试成功" } : item) }, "重试风险回写", "risk_writeback"));
+    else { const { error } = await createClient().rpc("complete_simulated_risk_writeback", { p_job_id: job.id, p_success: true, p_error: "" }); if (error) return setNotice(error.message); await audit("重试风险回写", "risk_writeback", job.risk_record_id); await load(); }
+    setNotice("回写重试成功，对账状态已更新。");
+  }
+  async function importRiskBatch(file: File | undefined, sourceCode: string) {
+    if (!file || !requireWrite()) return;
+    try {
+      const rows = await readWorkbook(file); if (!rows.length) throw new Error("工作表为空");
+      const batch: RiskImportBatch = { id: uid(), batch_no: `RISK-${Date.now()}`, source_code: sourceCode, file_name: file.name, status: "completed", total_count: rows.length, created_count: 0, changed_count: 0, deleted_count: 0, created_at: now() };
+      const records = rows.map((row, index): RiskRecord => { const changeType = (sheetCell(row, "差异类型", "change_type") || "变更") as RiskRecord["change_type"]; if (changeType === "新增") batch.created_count++; else if (changeType === "删减") batch.deleted_count++; else batch.changed_count++; return { id: uid(), batch_id: batch.id, source_record_id: sheetCell(row, "源数据ID", "source_record_id") || `${sourceCode}-${index + 1}`, name: sheetCell(row, "对象名称", "name"), area: sheetCell(row, "区域", "area"), record_type: sheetCell(row, "对象类型", "record_type"), source: sheetCell(row, "数据来源", "source") || sourceCode, change_type: changeType, old_value: sheetCell(row, "原值", "old_value"), new_value: sheetCell(row, "新值", "new_value"), status: "待派单", assigned_org: "", created_at: now() }; }).filter((record) => record.name && record.area && record.record_type);
+      if (!records.length) throw new Error("缺少对象名称、区域或对象类型"); batch.total_count = records.length;
+      const changes: RiskFieldChange[] = records.map((record) => ({ id: uid(), risk_record_id: record.id, field_name: "主要内容", old_value: record.old_value, new_value: record.new_value, created_at: now() }));
+      if (!user) setData((current) => withLocalLog({ ...current, riskBatches: [batch, ...current.riskBatches], risks: [...records, ...current.risks], riskChanges: [...changes, ...current.riskChanges] }, "导入风险普查批次", "risk_batch", { count: records.length }));
+      else { const supabase = createClient(); const createdBatch = await supabase.from("risk_import_batches").insert({ ...forInsert(batch), user_id: user.id }).select("id").single(); if (createdBatch.error) throw createdBatch.error; for (const [index, record] of records.entries()) { const created = await supabase.from("risk_records").insert({ ...forInsert({ ...record, batch_id: createdBatch.data.id }), user_id: user.id }).select("id").single(); if (created.error) throw created.error; const change = changes[index]; const insertedChange = await supabase.from("risk_field_changes").insert({ risk_record_id: created.data.id, field_name: change.field_name, old_value: change.old_value, new_value: change.new_value }); if (insertedChange.error) throw insertedChange.error; } await audit("导入风险普查批次", "risk_batch", createdBatch.data.id, { count: records.length, sourceCode }); await load(); }
+      setNotice(`风险批次导入成功，共 ${records.length} 条。`);
+    } catch (error) { setNotice(`风险批次导入失败：${error instanceof Error ? error.message : "文件格式不正确"}`); }
+  }
+  async function exportRiskRows(format: "csv" | "xlsx", fields: string[], risks: RiskRecord[]) {
+    const rows = risks.map((item) => ({ "对象名称": item.name, "区域": item.area, "对象类型": item.record_type, "数据来源": item.source, "差异类型": item.change_type, "原值": item.old_value, "新值": item.new_value, "状态": item.status, "承办机构": item.assigned_org || "" }));
+    const selectedRows = rows.map((row) => Object.fromEntries(fields.map((field) => [field, row[field as keyof typeof row]])));
+    if (format === "xlsx") await downloadWorkbook("风险普查筛选数据.xlsx", "风险普查", selectedRows); else downloadCsv("风险普查筛选数据.csv", fields, selectedRows);
   }
   async function removeRisk(riskId: string) {
     if (!requireWrite()) return;
@@ -328,11 +494,10 @@ export function EmergencyApp() {
   async function disableInvite(invite: TeamInvite) { if (!user || role !== "admin") return; const { error } = await createClient().from("team_invites").update({ active: false }).eq("id", invite.id); if (error) return setNotice(error.message); await audit("停用团队邀请码", "team_invite", invite.id); await load(); }
 
   function exportData() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })); a.download = `西湖应急产品数据-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); }
-  function exportRisks() { const rows = data.risks.map((item) => [item.name, item.area, item.record_type, item.source, item.change_type, item.old_value, item.new_value, item.status, item.assigned_org || ""]); const csv = "\uFEFF" + [["对象", "区域", "类型", "来源", "差异", "原值", "新值", "状态", "承办机构"], ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = "风险普查数据.csv"; a.click(); URL.revokeObjectURL(a.href); }
-  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
+  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...empty, ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates, resources: parsed.resources || demoResources, warehouses: parsed.warehouses || demoWarehouses, inventoryItems: parsed.inventoryItems || demoInventoryItems, inventoryBalances: parsed.inventoryBalances || demoInventoryBalances, inventoryDocuments: parsed.inventoryDocuments || [], inventoryDocumentLines: parsed.inventoryDocumentLines || [], inventoryMovements: parsed.inventoryMovements || [], riskBatches: parsed.riskBatches || demoRiskBatches, riskChanges: parsed.riskChanges || demoRiskFieldChanges, riskWritebackJobs: parsed.riskWritebackJobs || [] }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
   async function signOut() { if (user) await createClient().auth.signOut(); setUser(null); setRole("member"); await load(); }
 
-  const stats = useMemo(() => ({ events: data.events.length, executing: data.tasks.filter((item) => item.status !== "已完成").length, resources: data.records.filter((item) => item.module === "resources").length, alerts: data.records.filter((item) => ["monitoring", "city_safety"].includes(item.module) && ["超警", "待处置", "预警"].includes(item.status)).length }), [data]);
+  const stats = useMemo(() => ({ events: data.events.length, executing: data.tasks.filter((item) => item.status !== "已完成").length, resources: data.resources.length, alerts: data.records.filter((item) => ["monitoring", "city_safety"].includes(item.module) && ["超警", "待处置", "预警"].includes(item.status)).length }), [data]);
   if (loading) return <div className="loading">正在载入西湖应急综合平台…</div>;
   const writable = accountActive && canWrite(role);
   const common = { records: data.records, writable, onAdd: addRecord, onUpdate: updateRecord, onDelete: removeRecord };
@@ -341,8 +506,9 @@ export function EmergencyApp() {
     {page === "portal" && <PortalPage data={data} role={role} />}{page === "typhoon" && <TyphoonPage {...common} onCreateEvent={createEventFromAlert} />}
     {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}
     {page === "command" && <CommandPage currentUserId={user?.id} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} />}
-    {page === "resources" && <ResourcesPage {...common} />}{page === "inventory" && <InventoryPage {...common} />}
-    {page === "risks" && <RisksPage risks={data.risks} profiles={profiles} organizations={organizations} writable={writable} onAdd={addRisk} onProgress={progressRisk} onDelete={removeRisk} onExport={exportRisks} />}
+    {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} writable={writable} onAdd={addResource} onStatus={updateResourceStatus} onImport={importResources} onExport={exportResources} />}
+    {page === "inventory" && <InventoryCenterPage warehouses={data.warehouses} items={data.inventoryItems} balances={data.inventoryBalances} documents={data.inventoryDocuments} lines={data.inventoryDocumentLines} writable={writable} admin={!user || role === "admin"} onAddWarehouse={addWarehouse} onAddItem={addInventoryItem} onCreateDocument={createInventoryDocument} onSubmit={submitInventoryDocument} onPost={postInventoryDocument} onImport={importInventory} onExport={exportInventory} />}
+    {page === "risks" && <RiskSurveyCenterPage risks={data.risks} batches={data.riskBatches} changes={data.riskChanges} jobs={data.riskWritebackJobs} profiles={profiles} organizations={organizations} writable={writable} admin={!user || role === "admin"} onAdd={addRisk} onBulkAssign={bulkAssignRisks} onTransition={transitionRisk} onDelete={removeRisk} onImport={importRiskBatch} onExport={exportRiskRows} onRetry={retryRiskWriteback} />}
     {page === "city" && <CityPage {...common} onCreateEvent={createEventFromAlert} />}{page === "duty" && <DutyPage {...common} />}
     {page === "data" && <DataPage {...common} onExport={exportData} />}{page === "reviews" && <ResourcesPage {...common} module="reviews" />}
     {page === "logs" && <LogsPage logs={data.logs} />}{page === "admin" && role === "admin" && <AdminPage profiles={profiles} organizations={organizations} memberships={memberships} invites={invites} newInviteCode={newInviteCode} onRoleChange={updateProfileRole} onToggleProfile={toggleProfile} onAddOrganization={addOrganization} onAddMembership={addMembership} onCreateInvite={createInvite} onDisableInvite={disableInvite} />}
