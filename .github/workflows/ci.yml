@@ -43,6 +43,8 @@ jobs:
       - name: Pull Vercel production settings
         run: pnpm dlx vercel@59.23.2 pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Build production artifact
+        env:
+          NEXT_PUBLIC_TMAP_KEY: ${{ secrets.NEXT_PUBLIC_TMAP_KEY }}
         run: pnpm dlx vercel@59.23.2 build --prod --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Deploy production artifact
         id: deploy
