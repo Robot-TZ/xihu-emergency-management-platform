@@ -99,6 +99,7 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   const [newInviteCode, setNewInviteCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -167,6 +168,7 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   useEffect(() => { if (allowGuestDemo && !user && !loading) localStorage.setItem(LOCAL_KEY, JSON.stringify(data)); }, [allowGuestDemo, data, user, loading]);
 
   function navigate(nextPage: ProductPage) {
+    setSidebarOpen(false);
     const target = urlForPage(nextPage, window.location.hostname);
     if (target.startsWith("/?view=")) setPage(nextPage);
     else window.location.assign(target);
@@ -588,7 +590,9 @@ export function EmergencyApp({ initialPage = "portal", allowGuestDemo = false }:
   if (loading) return <div className="loading">正在载入西湖应急综合平台…</div>;
   const writable = accountActive && canWrite(role);
   const common = { records: data.records, writable, onAdd: addRecord, onUpdate: updateRecord, onDelete: removeRecord };
-  return <div className="shell"><aside><div className="brand"><span>湖</span><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本地演示"}</b><small>{user?.email || "仅限开发环境"}</small></div></aside><main><header><span>西湖区应急管理综合平台 / {productPages.find((item) => item.key === page)?.label}</span><div className="actions">{page !== "portal" && <button onClick={() => navigate("portal")}>返回综合门户</button>}<span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${role}` : "本地测试模式"}</span>{user && <button onClick={signOut}>退出</button>}</div></header><div className="workspace">{notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>关闭</button></div>}
+  const isPortal = page === "portal";
+  const pageLabel = productPages.find((item) => item.key === page)?.label;
+  return <div className={`shell${isPortal ? " no-sidebar" : ""}${sidebarOpen ? " sidebar-open" : ""}`}>{!isPortal && <aside><div className="brand"><span>湖</span><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本地演示"}</b><small>{user?.email || "仅限开发环境"}</small></div></aside>}{!isPortal && sidebarOpen && <button className="sidebar-backdrop" aria-label="关闭导航菜单" onClick={() => setSidebarOpen(false)} />}<main><header><div className="header-left">{!isPortal && <button className="menu-btn" aria-label="切换导航菜单" title="切换导航菜单" onClick={() => setSidebarOpen((open) => !open)}><span /><span /><span /></button>}<span>西湖区应急管理综合平台 / {pageLabel}</span></div><div className="actions">{page !== "portal" && <button onClick={() => navigate("portal")}>返回综合门户</button>}<span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${role}` : "本地测试模式"}</span>{user && <button onClick={signOut}>退出</button>}</div></header><div className="workspace">{notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>关闭</button></div>}
     {page === "overview" && <OverviewPage stats={stats} data={data} role={accountActive ? role : "viewer"} onSeed={seed} onExport={exportData} onImport={() => importRef.current?.click()} importRef={importRef} importData={importData} />}
     {page === "portal" && <PortalPage data={data} role={role} onOpen={navigate} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
     {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}

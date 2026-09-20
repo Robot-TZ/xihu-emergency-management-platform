@@ -1,4 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function gotoModule(page: Page, name: RegExp) {
+  await page.getByRole("button", { name: "切换导航菜单" }).click();
+  await page.getByRole("button", { name }).click();
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/?demo=1&view=overview");
@@ -10,18 +15,19 @@ test("guest product data persists across refresh", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
   await expect(page.getByText("示例数据已保存到本机。")).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: /指挥调度/ }).click();
+  await gotoModule(page, /指挥调度/);
   await expect(page.getByText("短时强降雨导致道路积水约30厘米")).toBeVisible();
 });
 
-test("workspace exposes the tender-aligned product modules", async ({ page }) => {
+test("workspace exposes the tender-aligned product modules via the drawer", async ({ page }) => {
+  await page.getByRole("button", { name: "切换导航菜单" }).click();
   for (const name of ["综合门户", "台汛卫士", "预案中心", "指挥调度", "应急资源", "物资库存", "风险普查", "城市安全", "应急值班", "数据管理", "灾后复盘"]) {
     await expect(page.locator("aside").getByRole("button", { name: new RegExp(name) })).toBeVisible();
   }
 });
 
 test("command tasks can be created, advanced and deleted", async ({ page }) => {
-  await page.getByRole("button", { name: /指挥调度/ }).click();
+  await gotoModule(page, /指挥调度/);
   await page.getByLabel("任务", { exact: true }).fill("巡查测试任务");
   await page.getByLabel("接收人").selectOption("");
   await page.getByLabel("接收组织").selectOption("");
@@ -31,7 +37,7 @@ test("command tasks can be created, advanced and deleted", async ({ page }) => {
   await row.getByRole("button", { name: "推进" }).click();
   await expect(row).toContainText("已读");
   await page.reload();
-  await page.getByRole("button", { name: /指挥调度/ }).click();
+  await gotoModule(page, /指挥调度/);
   row = page.getByRole("row").filter({ hasText: "巡查测试任务" });
   await expect(row).toContainText("已读");
   await row.getByRole("button", { name: "删除" }).click();
@@ -40,7 +46,7 @@ test("command tasks can be created, advanced and deleted", async ({ page }) => {
 
 test("monitoring command center deduplicates and converts an alert", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
-  await page.getByRole("button", { name: /台汛卫士/ }).click();
+  await gotoModule(page, /台汛卫士/);
   await expect(page.getByText("当前外部实时数据为模拟")).toBeVisible();
   await expect(page.getByText("设备在线率")).toBeVisible();
   const ingest = page.getByRole("heading", { name: "模拟适配器采集" }).locator("..");
@@ -59,7 +65,7 @@ test("monitoring command center deduplicates and converts an alert", async ({ pa
 
 test("professional plan center explains scoring and starts versioned task templates", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
-  await page.getByRole("button", { name: /预案中心/ }).click();
+  await gotoModule(page, /预案中心/);
   await expect(page.getByText("事件类型匹配：+50")).toBeVisible();
   await expect(page.getByText("启动后将生成 3 条责任任务").first()).toBeVisible();
   await page.getByRole("button", { name: "人工确认并启动" }).first().click();
@@ -69,7 +75,7 @@ test("professional plan center explains scoring and starts versioned task templa
 
 test("resource center recommends dispatch candidates with explainable evidence", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
-  await page.getByRole("button", { name: /应急资源/ }).click();
+  await gotoModule(page, /应急资源/);
   await expect(page.getByRole("heading", { name: "应急资源", exact: true })).toBeVisible();
   await expect(page.getByText("转塘街道应急队").first()).toBeVisible();
   await expect(page.getByText(/能力命中：/).first()).toBeVisible();
@@ -77,7 +83,7 @@ test("resource center recommends dispatch candidates with explainable evidence",
 
 test("inventory inbound document posts and changes the balance", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
-  await page.getByRole("button", { name: /物资库存/ }).click();
+  await gotoModule(page, /物资库存/);
   const form = page.getByRole("heading", { name: "新建库存业务单" }).locator("..");
   await form.locator('select[name="toWarehouseId"]').selectOption("wh-district");
   await form.locator('select[name="itemId"]').selectOption("item-pump");
@@ -91,7 +97,7 @@ test("inventory inbound document posts and changes the balance", async ({ page }
 
 test("risk confirmation creates an idempotent simulated writeback result", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
-  await page.getByRole("button", { name: /风险普查/ }).click();
+  await gotoModule(page, /风险普查/);
   const row = page.getByRole("row").filter({ hasText: "转塘演示安置点A" });
   await expect(row.getByText("隐患等级")).toBeVisible();
   await row.getByRole("button", { name: "确认并回写" }).click();
