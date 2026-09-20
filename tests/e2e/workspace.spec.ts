@@ -38,11 +38,22 @@ test("command tasks can be created, advanced and deleted", async ({ page }) => {
   await expect(row).toHaveCount(0);
 });
 
-test("monitoring demo is explicitly labeled and converts an alert", async ({ page }) => {
+test("monitoring command center deduplicates and converts an alert", async ({ page }) => {
+  await page.getByRole("button", { name: "初始化产品数据" }).click();
   await page.getByRole("button", { name: /台汛卫士/ }).click();
-  await expect(page.getByText("外部实时数据为模拟")).toBeVisible();
-  const card = page.locator(".monitor-card").filter({ hasText: "转塘积水点" });
-  await card.getByRole("button", { name: "转入事件研判" }).click();
+  await expect(page.getByText("当前外部实时数据为模拟")).toBeVisible();
+  await expect(page.getByText("设备在线率")).toBeVisible();
+  const ingest = page.getByRole("heading", { name: "模拟适配器采集" }).locator("..");
+  await ingest.getByLabel("设备").selectOption("asset-depth");
+  await ingest.getByLabel("指标编码").fill("water_depth");
+  await ingest.getByLabel("监测值").fill("32");
+  await ingest.getByLabel("单位").fill("cm");
+  await ingest.getByRole("button", { name: "写入监测值并执行规则" }).click();
+  await expect(page.getByText("阈值已触发，重复告警已合并。")).toBeVisible();
+  const row = page.getByRole("row").filter({ hasText: "转塘积水点" }).filter({ hasText: "累计 3 次" });
+  await row.getByRole("button", { name: "认领" }).click();
+  await row.getByRole("button", { name: "复核" }).click();
+  await row.getByRole("button", { name: "转事件" }).click();
   await expect(page.getByRole("heading", { name: "预案中心", exact: true })).toBeVisible();
 });
 

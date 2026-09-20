@@ -8,15 +8,18 @@ import { demoEvent, demoRisks, demoTasks } from "@/lib/demo-data";
 import { demoPlans, demoPlanTaskTemplates, demoPlanVersions } from "@/lib/plan-demo";
 import { parseTaskTemplates } from "@/lib/plan-engine";
 import { demoInventoryBalances, demoInventoryDocumentLines, demoInventoryDocuments, demoInventoryMovements, demoInventoryItems, demoResources, demoRiskBatches, demoRiskFieldChanges, demoRiskWritebackJobs, demoWarehouses } from "@/lib/operations-demo";
+import { demoMonitoringActions, demoMonitoringAlerts, demoMonitoringAssets, demoMonitoringReadings, demoMonitoringRules } from "@/lib/monitoring-demo";
+import { alertFingerprint, evaluateMonitoringRule } from "@/lib/monitoring-engine";
 import { applyInventoryDeltas } from "@/lib/resource-engine";
 import { downloadCsv, downloadWorkbook, readWorkbook, type SheetRow } from "@/lib/spreadsheet";
 import { demoOperationalRecords, moduleMeta, productPages, type ProductPage } from "@/lib/product-catalog";
-import type { ActivityLog, EmergencyPlan, EventRecord, InventoryBalance, InventoryDocument, InventoryDocumentLine, InventoryItem, InventoryMovement, OperationalRecord, Organization, OrganizationMember, PlanTaskTemplate, PlanVersion, ProductModule, Profile, ResourceAsset, RiskFieldChange, RiskImportBatch, RiskRecord, RiskWritebackJob, Role, TaskRecord, TeamInvite, Warehouse } from "@/lib/types";
-import { CityPage, DataPage, DutyPage, LogsPage, OverviewPage, PortalPage, ResourcesPage, TyphoonPage } from "./product-pages";
+import type { ActivityLog, EmergencyPlan, EventRecord, InventoryBalance, InventoryDocument, InventoryDocumentLine, InventoryItem, InventoryMovement, MonitoringAlert, MonitoringAlertAction, MonitoringAsset, MonitoringDomain, MonitoringReading, MonitoringRule, OperationalRecord, Organization, OrganizationMember, PlanTaskTemplate, PlanVersion, ProductModule, Profile, ResourceAsset, RiskFieldChange, RiskImportBatch, RiskRecord, RiskWritebackJob, Role, TaskRecord, TeamInvite, Warehouse } from "@/lib/types";
+import { DataPage, DutyPage, LogsPage, OverviewPage, PortalPage, ResourcesPage } from "./product-pages";
 import { AdminPage, CommandPage } from "./workflow-pages";
 import { PlanCenterPage, type PlanLifecycleAction } from "./plan-center";
 import { InventoryCenterPage, ResourceCenterPage } from "./resource-inventory-center";
 import { RiskSurveyCenterPage } from "./risk-survey-center";
+import { MonitoringCenterPage } from "./monitoring-center";
 
 export type ProductSnapshot = {
   events: EventRecord[]; tasks: TaskRecord[]; risks: RiskRecord[]; logs: ActivityLog[]; records: OperationalRecord[];
@@ -24,8 +27,10 @@ export type ProductSnapshot = {
   resources: ResourceAsset[]; warehouses: Warehouse[]; inventoryItems: InventoryItem[]; inventoryBalances: InventoryBalance[];
   inventoryDocuments: InventoryDocument[]; inventoryDocumentLines: InventoryDocumentLine[]; inventoryMovements: InventoryMovement[];
   riskBatches: RiskImportBatch[]; riskChanges: RiskFieldChange[]; riskWritebackJobs: RiskWritebackJob[];
+  monitoringAssets: MonitoringAsset[]; monitoringReadings: MonitoringReading[]; monitoringRules: MonitoringRule[];
+  monitoringAlerts: MonitoringAlert[]; monitoringActions: MonitoringAlertAction[];
 };
-const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [], plans: [], planVersions: [], planTemplates: [], resources: [], warehouses: [], inventoryItems: [], inventoryBalances: [], inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: [], riskChanges: [], riskWritebackJobs: [] };
+const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [], plans: [], planVersions: [], planTemplates: [], resources: [], warehouses: [], inventoryItems: [], inventoryBalances: [], inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: [], riskChanges: [], riskWritebackJobs: [], monitoringAssets: [], monitoringReadings: [], monitoringRules: [], monitoringAlerts: [], monitoringActions: [] };
 const LOCAL_KEY = "xihu-emergency-product-v2";
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
@@ -68,9 +73,14 @@ function loadLocal(): ProductSnapshot {
       riskBatches: Array.isArray(parsed.riskBatches) ? parsed.riskBatches : demoRiskBatches,
       riskChanges: Array.isArray(parsed.riskChanges) ? parsed.riskChanges : demoRiskFieldChanges,
       riskWritebackJobs: Array.isArray(parsed.riskWritebackJobs) ? parsed.riskWritebackJobs : demoRiskWritebackJobs,
+      monitoringAssets: Array.isArray(parsed.monitoringAssets) ? parsed.monitoringAssets : demoMonitoringAssets,
+      monitoringReadings: Array.isArray(parsed.monitoringReadings) ? parsed.monitoringReadings : demoMonitoringReadings,
+      monitoringRules: Array.isArray(parsed.monitoringRules) ? parsed.monitoringRules : demoMonitoringRules,
+      monitoringAlerts: Array.isArray(parsed.monitoringAlerts) ? parsed.monitoringAlerts : demoMonitoringAlerts,
+      monitoringActions: Array.isArray(parsed.monitoringActions) ? parsed.monitoringActions : demoMonitoringActions,
     };
   } catch { /* corrupted visitor data falls back to safe defaults */ }
-  return { ...empty, records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: demoInventoryDocuments, inventoryDocumentLines: demoInventoryDocumentLines, inventoryMovements: demoInventoryMovements, riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: demoRiskWritebackJobs };
+  return { ...empty, records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: demoInventoryDocuments, inventoryDocumentLines: demoInventoryDocumentLines, inventoryMovements: demoInventoryMovements, riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: demoRiskWritebackJobs, monitoringAssets: demoMonitoringAssets, monitoringReadings: demoMonitoringReadings, monitoringRules: demoMonitoringRules, monitoringAlerts: demoMonitoringAlerts, monitoringActions: demoMonitoringActions };
 }
 function withLocalLog(data: ProductSnapshot, action: string, entity_type: string, detail: Record<string, unknown> = {}): ProductSnapshot {
   return { ...data, logs: [{ id: uid(), action, entity_type, detail, created_at: now() }, ...data.logs] };
@@ -105,7 +115,7 @@ export function EmergencyApp() {
     const currentActive = profileResult.data?.active !== false;
     setRole(currentRole);
     setAccountActive(currentActive);
-    const [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, orgs, orgMembers, visibleProfiles] = await Promise.all([
+    const [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, monitoringAssets, monitoringReadings, monitoringRules, monitoringAlerts, monitoringActions, orgs, orgMembers, visibleProfiles] = await Promise.all([
       supabase.from("events").select("*").order("created_at", { ascending: false }),
       supabase.from("tasks").select("*").order("created_at", { ascending: false }),
       supabase.from("risk_records").select("*").order("created_at", { ascending: false }),
@@ -124,13 +134,18 @@ export function EmergencyApp() {
       supabase.from("risk_import_batches").select("*").order("created_at", { ascending: false }),
       supabase.from("risk_field_changes").select("*").order("created_at"),
       supabase.from("risk_writeback_jobs").select("*").order("created_at", { ascending: false }),
+      supabase.from("monitoring_assets").select("*").order("created_at", { ascending: false }),
+      supabase.from("monitoring_readings").select("*").order("measured_at", { ascending: false }).limit(1000),
+      supabase.from("monitoring_rules").select("*").order("created_at", { ascending: false }),
+      supabase.from("monitoring_alerts").select("*").order("last_triggered_at", { ascending: false }),
+      supabase.from("monitoring_alert_actions").select("*").order("created_at", { ascending: false }).limit(300),
       supabase.from("organizations").select("*").order("name"),
       supabase.from("organization_members").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("id,email,display_name,role,organization,job_title,active,created_at").order("created_at", { ascending: false }),
     ]);
-    const failure = [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
+    const failure = [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, monitoringAssets, monitoringReadings, monitoringRules, monitoringAlerts, monitoringActions, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
     if (failure) setNotice("数据读取失败：" + failure.message);
-    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[], plans: (plans.data || []) as EmergencyPlan[], planVersions: (planVersions.data || []) as PlanVersion[], planTemplates: (planTemplates.data || []) as PlanTaskTemplate[], resources: (resources.data || []) as ResourceAsset[], warehouses: (warehouses.data || []) as Warehouse[], inventoryItems: (inventoryItems.data || []) as InventoryItem[], inventoryBalances: (inventoryBalances.data || []) as InventoryBalance[], inventoryDocuments: (inventoryDocuments.data || []) as InventoryDocument[], inventoryDocumentLines: (inventoryDocumentLines.data || []) as InventoryDocumentLine[], inventoryMovements: (inventoryMovements.data || []) as InventoryMovement[], riskBatches: (riskBatches.data || []) as RiskImportBatch[], riskChanges: (riskChanges.data || []) as RiskFieldChange[], riskWritebackJobs: (riskWritebackJobs.data || []) as RiskWritebackJob[] });
+    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[], plans: (plans.data || []) as EmergencyPlan[], planVersions: (planVersions.data || []) as PlanVersion[], planTemplates: (planTemplates.data || []) as PlanTaskTemplate[], resources: (resources.data || []) as ResourceAsset[], warehouses: (warehouses.data || []) as Warehouse[], inventoryItems: (inventoryItems.data || []) as InventoryItem[], inventoryBalances: (inventoryBalances.data || []) as InventoryBalance[], inventoryDocuments: (inventoryDocuments.data || []) as InventoryDocument[], inventoryDocumentLines: (inventoryDocumentLines.data || []) as InventoryDocumentLine[], inventoryMovements: (inventoryMovements.data || []) as InventoryMovement[], riskBatches: (riskBatches.data || []) as RiskImportBatch[], riskChanges: (riskChanges.data || []) as RiskFieldChange[], riskWritebackJobs: (riskWritebackJobs.data || []) as RiskWritebackJob[], monitoringAssets: (monitoringAssets.data || []) as MonitoringAsset[], monitoringReadings: (monitoringReadings.data || []) as MonitoringReading[], monitoringRules: (monitoringRules.data || []) as MonitoringRule[], monitoringAlerts: (monitoringAlerts.data || []) as MonitoringAlert[], monitoringActions: (monitoringActions.data || []) as MonitoringAlertAction[] });
     setOrganizations((orgs.data || []) as Organization[]);
     setMemberships((orgMembers.data || []) as OrganizationMember[]);
     setProfiles((visibleProfiles.data || []) as Profile[]);
@@ -156,10 +171,24 @@ export function EmergencyApp() {
 
   async function seed() {
     if (!requireWrite()) return;
-    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: [] }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
+    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: [], monitoringAssets: demoMonitoringAssets, monitoringReadings: demoMonitoringReadings, monitoringRules: demoMonitoringRules, monitoringAlerts: demoMonitoringAlerts, monitoringActions: demoMonitoringActions }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
     const supabase = createClient();
     if (!data.events.length) await supabase.from("events").insert({ ...forInsert(demoEvent), user_id: user.id });
     if (!data.records.length) await supabase.from("operational_records").insert(demoOperationalRecords.map((record) => ({ ...forInsert(record), user_id: user.id })));
+    if (!data.monitoringAssets.length) {
+      const assetRows = demoMonitoringAssets.map((asset) => ({ ...forInsert(asset), user_id: user.id }));
+      const createdAssets = await supabase.from("monitoring_assets").upsert(assetRows, { onConflict: "code" }).select("id,code");
+      if (createdAssets.error) return setNotice(createdAssets.error.message);
+      const ruleRows = demoMonitoringRules.map((rule) => ({ ...forInsert(rule), user_id: user.id }));
+      const createdRules = await supabase.from("monitoring_rules").upsert(ruleRows, { onConflict: "domain,asset_type,metric_code,name" });
+      if (createdRules.error) return setNotice(createdRules.error.message);
+      const assetIdByDemoId = new Map(demoMonitoringAssets.map((asset) => [asset.id, createdAssets.data.find((item) => item.code === asset.code)?.id]));
+      for (const reading of demoMonitoringReadings) {
+        const assetId = assetIdByDemoId.get(reading.asset_id); if (!assetId) continue;
+        const result = await supabase.rpc("ingest_monitoring_reading", { p_asset_id: assetId, p_metric_code: reading.metric_code, p_value: reading.value, p_unit: reading.unit, p_measured_at: reading.measured_at, p_raw_payload: reading.raw_payload || {} });
+        if (result.error) return setNotice(result.error.message);
+      }
+    }
     await audit("初始化第二阶段产品数据", "workspace"); await load(); setNotice("产品基础数据已写入 Supabase。");
   }
 
@@ -453,6 +482,59 @@ export function EmergencyApp() {
     else { const { error } = await createClient().from("risk_records").delete().eq("id", riskId); if (error) return setNotice(error.message); await audit("删除风险工单", "risk", riskId); await load(); }
   }
 
+  async function addMonitoringAsset(domain: MonitoringDomain, form: FormData) {
+    if (!requireWrite()) return;
+    const asset: MonitoringAsset = { id: uid(), code: String(form.get("code")).trim().toUpperCase(), name: String(form.get("name")), domain, asset_type: String(form.get("assetType")), area: String(form.get("area")), address: String(form.get("address") || ""), longitude: Number(form.get("longitude")), latitude: Number(form.get("latitude")), source_code: String(form.get("sourceCode") || "SIM_ADAPTER"), source_mode: "simulated", status: "online", last_seen_at: null, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, monitoringAssets: [asset, ...current.monitoringAssets] }, "登记监测设备", "monitoring_asset", { code: asset.code }));
+    else { const { error } = await createClient().from("monitoring_assets").insert({ ...forInsert(asset), user_id: user.id }); if (error) return setNotice(error.message); await audit("登记监测设备", "monitoring_asset", undefined, { code: asset.code }); await load(); }
+    setNotice("设备或测站已登记。经纬度当前用于示意地图定位。");
+  }
+
+  async function addMonitoringRule(domain: MonitoringDomain, form: FormData) {
+    if (!requireWrite()) return;
+    const operator = String(form.get("operator")) as MonitoringRule["operator"]; const warning = Number(form.get("warning")); const critical = Number(form.get("critical"));
+    if ((operator === "gte" && critical < warning) || (operator === "lte" && critical > warning)) return setNotice("严重阈值必须比预警阈值更严格。");
+    const rule: MonitoringRule = { id: uid(), name: String(form.get("name")), domain, asset_type: String(form.get("assetType")), metric_code: String(form.get("metricCode")).trim(), operator, warning_threshold: warning, critical_threshold: critical, silence_minutes: Number(form.get("silence") || 30), enabled: true, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, monitoringRules: [rule, ...current.monitoringRules] }, "新增监测阈值规则", "monitoring_rule", { name: rule.name }));
+    else { const { error } = await createClient().from("monitoring_rules").insert({ ...forInsert(rule), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增监测阈值规则", "monitoring_rule", undefined, { name: rule.name }); await load(); }
+    setNotice("阈值规则已保存，后续采集值将自动执行判断。");
+  }
+
+  async function ingestMonitoringReading(asset: MonitoringAsset, form: FormData) {
+    if (!requireWrite()) return;
+    const measuredAt = String(form.get("measuredAt") || "") ? new Date(String(form.get("measuredAt"))).toISOString() : now(); const metricCode = String(form.get("metricCode")).trim(); const value = Number(form.get("value")); const unit = String(form.get("unit"));
+    if (!Number.isFinite(value)) return setNotice("监测值格式不正确。");
+    if (!user) {
+      const reading: MonitoringReading = { id: uid(), asset_id: asset.id, metric_code: metricCode, value, unit, measured_at: measuredAt, source_mode: "simulated", raw_payload: { adapter: "demo" }, created_at: now() };
+      setData((current) => {
+        let nextAlerts = [...current.monitoringAlerts]; let nextActions = [...current.monitoringActions]; let message = "监测值已写入，未触发阈值。";
+        for (const rule of current.monitoringRules.filter((item) => item.enabled && item.domain === asset.domain && item.asset_type === asset.asset_type && item.metric_code === metricCode)) {
+          const triggered = evaluateMonitoringRule(rule, value); if (!triggered) continue; const fingerprint = alertFingerprint(asset.id, metricCode, rule.id); const existing = nextAlerts.find((item) => item.fingerprint === fingerprint && item.status !== "closed");
+          if (existing) { nextAlerts = nextAlerts.map((item) => item.id === existing.id ? { ...item, measured_value: value, threshold_value: triggered.threshold, level: triggered.level, occurrence_count: item.occurrence_count + 1, last_triggered_at: measuredAt, updated_at: now() } : item); nextActions = [{ id: uid(), alert_id: existing.id, action: "deduplicated", note: "重复告警已合并计数。", created_at: now() }, ...nextActions]; message = "阈值已触发，重复告警已合并。"; }
+          else { const alertId = uid(); nextAlerts = [{ id: alertId, asset_id: asset.id, rule_id: rule.id, fingerprint, metric_code: metricCode, measured_value: value, threshold_value: triggered.threshold, level: triggered.level, status: "open", occurrence_count: 1, first_triggered_at: measuredAt, last_triggered_at: measuredAt, created_at: now() }, ...nextAlerts]; nextActions = [{ id: uid(), alert_id: alertId, action: "created", note: "阈值规则首次触发。", created_at: now() }, ...nextActions]; message = "阈值已触发，已生成新告警。"; }
+        }
+        queueMicrotask(() => setNotice(message));
+        return withLocalLog({ ...current, monitoringReadings: [reading, ...current.monitoringReadings], monitoringAssets: current.monitoringAssets.map((item) => item.id === asset.id ? { ...item, status: "online", last_seen_at: measuredAt } : item), monitoringAlerts: nextAlerts, monitoringActions: nextActions }, "模拟适配器采集监测值", "monitoring_reading", { metricCode, value });
+      });
+    } else {
+      const { data: result, error } = await createClient().rpc("ingest_monitoring_reading", { p_asset_id: asset.id, p_metric_code: metricCode, p_value: value, p_unit: unit, p_measured_at: measuredAt, p_raw_payload: { adapter: "demo" } }); if (error) return setNotice(error.message);
+      await audit("模拟适配器采集监测值", "monitoring_reading", undefined, { assetId: asset.id, metricCode, value }); await load(); setNotice(result?.[0]?.alert_action === "created" ? "阈值已触发，已生成新告警。" : result?.[0]?.alert_action === "deduplicated" ? "阈值已触发，重复告警已合并。" : "监测值已写入，未触发阈值。");
+    }
+  }
+
+  async function transitionMonitoringAlert(alert: MonitoringAlert, action: "claim" | "verify" | "convert" | "close") {
+    if (!requireWrite()) return;
+    const asset = data.monitoringAssets.find((item) => item.id === alert.asset_id); const actionName = action === "claim" ? "认领" : action === "verify" ? "复核" : action === "convert" ? "转事件" : "关闭"; let eventId: string | null = null;
+    if (!user) {
+      if (action === "convert") { eventId = uid(); const event: EventRecord = { id: eventId, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判", created_at: now() }; setData((current) => withLocalLog({ ...current, events: [event, ...current.events], monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: "converted", event_id: eventId } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: "converted", note: "告警已转入事件研判。", created_at: now() }, ...current.monitoringActions] }, "监测告警转事件", "monitoring_alert")); setPage("plans"); setNotice("告警已转入事件研判并进入预案中心。"); return; }
+      const nextStatus = action === "claim" ? "claimed" : action === "verify" ? "verified" : "closed"; setData((current) => withLocalLog({ ...current, monitoringAlerts: current.monitoringAlerts.map((item) => item.id === alert.id ? { ...item, status: nextStatus, claimed_at: action === "claim" ? now() : item.claimed_at, verified_at: action === "verify" ? now() : item.verified_at, closed_at: action === "close" ? now() : item.closed_at } : item), monitoringActions: [{ id: uid(), alert_id: alert.id, action: nextStatus, note: `告警已${actionName}。`, created_at: now() }, ...current.monitoringActions] }, `监测告警${actionName}`, "monitoring_alert")); setNotice(`告警已${actionName}。`); return;
+    }
+    const supabase = createClient();
+    if (action === "convert") { const created = await supabase.from("events").insert({ user_id: user.id, event_type: asset?.domain === "city" ? "城市安全事件" : "暴雨内涝", response_level: alert.level === "critical" ? "II级" : "III级", area: asset?.area || "西湖区", happened_at: alert.last_triggered_at, description: `${asset?.name || "监测设备"}${alert.metric_code}触发阈值：${alert.measured_value}（模拟监测告警转入，需人工研判）`, status: "待研判" }).select("id").single(); if (created.error) return setNotice(created.error.message); eventId = created.data.id; }
+    const { error } = await supabase.rpc("transition_monitoring_alert", { p_alert_id: alert.id, p_action: action, p_event_id: eventId }); if (error) return setNotice(error.message); await audit(`监测告警${actionName}`, "monitoring_alert", alert.id, { eventId }); await load();
+    if (action === "convert") { setPage("plans"); setNotice("告警已转入事件研判并进入预案中心。"); } else setNotice(`告警已${actionName}。`);
+  }
+
   async function addRecord(module: ProductModule, form: FormData) {
     if (!requireWrite()) return;
     const record: OperationalRecord = { id: uid(), module, record_type: String(form.get("recordType")), title: String(form.get("title")), status: String(form.get("status") || "正常"), area: String(form.get("area") || ""), owner_org: String(form.get("ownerOrg") || ""), summary: String(form.get("summary") || ""), source_mode: String(form.get("sourceMode") || "real") as OperationalRecord["source_mode"], details: { note: String(form.get("details") || "") }, created_at: now(), updated_at: now() };
@@ -468,9 +550,6 @@ export function EmergencyApp() {
     if (!requireWrite()) return;
     if (!user) setData((current) => withLocalLog({ ...current, records: current.records.filter((item) => item.id !== record.id) }, `删除${moduleMeta[record.module].title}记录`, record.module));
     else { const { error } = await createClient().from("operational_records").delete().eq("id", record.id); if (error) return setNotice(error.message); await audit(`删除${moduleMeta[record.module].title}记录`, record.module, record.id); await load(); }
-  }
-  async function createEventFromAlert(record: OperationalRecord) {
-    const form = new FormData(); form.set("type", record.module === "city_safety" ? "城市安全事件" : "暴雨内涝"); form.set("level", "III级"); form.set("area", record.area || "西湖区"); form.set("description", `${record.title}：${record.summary}（由模拟监测记录转入，需人工复核）`); await addEvent(form); setPage("plans");
   }
   async function updateProfileRole(profileId: string, nextRole: Role) { if (!user || role !== "admin") return; const { error } = await createClient().from("profiles").update({ role: nextRole }).eq("id", profileId); if (error) return setNotice(error.message); await audit("调整成员角色", "profile", profileId, { role: nextRole }); await load(); }
   async function toggleProfile(profile: Profile) { if (!user || role !== "admin") return; if (profile.id === user.id && profile.active) return setNotice("不能停用当前登录的管理员账号。"); const active = !profile.active; const { error } = await createClient().from("profiles").update({ active }).eq("id", profile.id); if (error) return setNotice(error.message); await audit(active ? "启用账号" : "停用账号", "profile", profile.id); await load(); }
@@ -494,22 +573,22 @@ export function EmergencyApp() {
   async function disableInvite(invite: TeamInvite) { if (!user || role !== "admin") return; const { error } = await createClient().from("team_invites").update({ active: false }).eq("id", invite.id); if (error) return setNotice(error.message); await audit("停用团队邀请码", "team_invite", invite.id); await load(); }
 
   function exportData() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })); a.download = `西湖应急产品数据-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); }
-  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...empty, ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates, resources: parsed.resources || demoResources, warehouses: parsed.warehouses || demoWarehouses, inventoryItems: parsed.inventoryItems || demoInventoryItems, inventoryBalances: parsed.inventoryBalances || demoInventoryBalances, inventoryDocuments: parsed.inventoryDocuments || [], inventoryDocumentLines: parsed.inventoryDocumentLines || [], inventoryMovements: parsed.inventoryMovements || [], riskBatches: parsed.riskBatches || demoRiskBatches, riskChanges: parsed.riskChanges || demoRiskFieldChanges, riskWritebackJobs: parsed.riskWritebackJobs || [] }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
+  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...empty, ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates, resources: parsed.resources || demoResources, warehouses: parsed.warehouses || demoWarehouses, inventoryItems: parsed.inventoryItems || demoInventoryItems, inventoryBalances: parsed.inventoryBalances || demoInventoryBalances, inventoryDocuments: parsed.inventoryDocuments || [], inventoryDocumentLines: parsed.inventoryDocumentLines || [], inventoryMovements: parsed.inventoryMovements || [], riskBatches: parsed.riskBatches || demoRiskBatches, riskChanges: parsed.riskChanges || demoRiskFieldChanges, riskWritebackJobs: parsed.riskWritebackJobs || [], monitoringAssets: parsed.monitoringAssets || demoMonitoringAssets, monitoringReadings: parsed.monitoringReadings || demoMonitoringReadings, monitoringRules: parsed.monitoringRules || demoMonitoringRules, monitoringAlerts: parsed.monitoringAlerts || demoMonitoringAlerts, monitoringActions: parsed.monitoringActions || demoMonitoringActions }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
   async function signOut() { if (user) await createClient().auth.signOut(); setUser(null); setRole("member"); await load(); }
 
-  const stats = useMemo(() => ({ events: data.events.length, executing: data.tasks.filter((item) => item.status !== "已完成").length, resources: data.resources.length, alerts: data.records.filter((item) => ["monitoring", "city_safety"].includes(item.module) && ["超警", "待处置", "预警"].includes(item.status)).length }), [data]);
+  const stats = useMemo(() => ({ events: data.events.length, executing: data.tasks.filter((item) => item.status !== "已完成").length, resources: data.resources.length, alerts: data.monitoringAlerts.filter((item) => item.status !== "closed").length }), [data]);
   if (loading) return <div className="loading">正在载入西湖应急综合平台…</div>;
   const writable = accountActive && canWrite(role);
   const common = { records: data.records, writable, onAdd: addRecord, onUpdate: updateRecord, onDelete: removeRecord };
   return <div className="shell"><aside><div className="brand"><span>湖</span><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => setPage(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本机持久化"}</b><small>{user?.email || "访客模式"}</small></div></aside><main><header><span>西湖区应急管理综合平台 / {productPages.find((item) => item.key === page)?.label}</span><div className="actions"><span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${role}` : "本地产品体验"}</span>{user ? <button onClick={signOut}>退出</button> : <button onClick={() => setShowAuth(!showAuth)}>登录</button>}</div></header><div className="workspace">{showAuth && !user && <AuthPanel onDone={() => { setShowAuth(false); void load(); }} />}{notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>关闭</button></div>}
     {page === "overview" && <OverviewPage stats={stats} data={data} role={accountActive ? role : "viewer"} onSeed={seed} onExport={exportData} onImport={() => importRef.current?.click()} importRef={importRef} importData={importData} />}
-    {page === "portal" && <PortalPage data={data} role={role} />}{page === "typhoon" && <TyphoonPage {...common} onCreateEvent={createEventFromAlert} />}
+    {page === "portal" && <PortalPage data={data} role={role} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
     {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}
     {page === "command" && <CommandPage currentUserId={user?.id} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} />}
     {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} writable={writable} onAdd={addResource} onStatus={updateResourceStatus} onImport={importResources} onExport={exportResources} />}
     {page === "inventory" && <InventoryCenterPage warehouses={data.warehouses} items={data.inventoryItems} balances={data.inventoryBalances} documents={data.inventoryDocuments} lines={data.inventoryDocumentLines} writable={writable} admin={!user || role === "admin"} onAddWarehouse={addWarehouse} onAddItem={addInventoryItem} onCreateDocument={createInventoryDocument} onSubmit={submitInventoryDocument} onPost={postInventoryDocument} onImport={importInventory} onExport={exportInventory} />}
     {page === "risks" && <RiskSurveyCenterPage risks={data.risks} batches={data.riskBatches} changes={data.riskChanges} jobs={data.riskWritebackJobs} profiles={profiles} organizations={organizations} writable={writable} admin={!user || role === "admin"} onAdd={addRisk} onBulkAssign={bulkAssignRisks} onTransition={transitionRisk} onDelete={removeRisk} onImport={importRiskBatch} onExport={exportRiskRows} onRetry={retryRiskWriteback} />}
-    {page === "city" && <CityPage {...common} onCreateEvent={createEventFromAlert} />}{page === "duty" && <DutyPage {...common} />}
+    {page === "city" && <MonitoringCenterPage domain="city" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}{page === "duty" && <DutyPage {...common} />}
     {page === "data" && <DataPage {...common} onExport={exportData} />}{page === "reviews" && <ResourcesPage {...common} module="reviews" />}
     {page === "logs" && <LogsPage logs={data.logs} />}{page === "admin" && role === "admin" && <AdminPage profiles={profiles} organizations={organizations} memberships={memberships} invites={invites} newInviteCode={newInviteCode} onRoleChange={updateProfileRole} onToggleProfile={toggleProfile} onAddOrganization={addOrganization} onAddMembership={addMembership} onCreateInvite={createInvite} onDisableInvite={disableInvite} />}
   </div></main></div>;

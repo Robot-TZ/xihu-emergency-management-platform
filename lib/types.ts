@@ -228,6 +228,85 @@ export type RiskWritebackJob = {
   created_at: string;
   updated_at?: string;
 };
+
+export type MonitoringDomain = "typhoon" | "city";
+export type MonitoringSourceMode = "simulated" | "external";
+export type MonitoringAsset = {
+  id: string;
+  user_id?: string;
+  code: string;
+  name: string;
+  domain: MonitoringDomain;
+  asset_type: string;
+  area: string;
+  address: string;
+  longitude: number;
+  latitude: number;
+  source_code: string;
+  source_mode: MonitoringSourceMode;
+  status: "online" | "offline" | "maintenance";
+  last_seen_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+export type MonitoringReading = {
+  id: string;
+  asset_id: string;
+  metric_code: string;
+  value: number;
+  unit: string;
+  measured_at: string;
+  source_mode: MonitoringSourceMode;
+  raw_payload?: Record<string, unknown>;
+  created_at: string;
+};
+export type MonitoringRule = {
+  id: string;
+  user_id?: string;
+  name: string;
+  domain: MonitoringDomain;
+  asset_type: string;
+  metric_code: string;
+  operator: "gte" | "lte";
+  warning_threshold: number;
+  critical_threshold: number;
+  silence_minutes: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at?: string;
+};
+export type MonitoringAlertStatus = "open" | "claimed" | "verified" | "converted" | "closed";
+export type MonitoringAlert = {
+  id: string;
+  user_id?: string;
+  asset_id: string;
+  rule_id?: string | null;
+  fingerprint: string;
+  metric_code: string;
+  measured_value: number;
+  threshold_value: number;
+  level: "warning" | "critical";
+  status: MonitoringAlertStatus;
+  occurrence_count: number;
+  first_triggered_at: string;
+  last_triggered_at: string;
+  claimed_by?: string | null;
+  claimed_at?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  event_id?: string | null;
+  closed_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+export type MonitoringAlertAction = {
+  id: string;
+  alert_id: string;
+  actor_id?: string | null;
+  action: "created" | "deduplicated" | "claimed" | "verified" | "converted" | "closed";
+  note: string;
+  created_at: string;
+};
 export type ActivityLog = {
   id: string;
   action: string;
