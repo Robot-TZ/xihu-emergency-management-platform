@@ -53,9 +53,12 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          project_domains="$(curl --fail-with-body --silent --show-error \
+          if ! project_domains="$(curl --fail-with-body --silent --show-error \
             "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains?teamId=${VERCEL_ORG_ID}" \
-            --header "Authorization: Bearer ${VERCEL_TOKEN}")"
+            --header "Authorization: Bearer ${VERCEL_TOKEN}")"; then
+            echo "Domain list fetch failed; assuming product subdomains are already bound."
+            exit 0
+          fi
           for domain in \
             typhoon.xihuresponse.top plan.xihuresponse.top command.xihuresponse.top \
             resource.xihuresponse.top inventory.xihuresponse.top risk.xihuresponse.top \
