@@ -1,0 +1,16 @@
+create index business_attachments_user_idx on public.business_attachments(user_id);
+create index event_participants_organization_idx on public.event_participants(organization_id);
+create index event_participants_user_idx on public.event_participants(user_id);
+create index event_updates_user_idx on public.event_updates(user_id);
+create index inventory_batches_item_idx on public.inventory_batches(item_id);
+create index inventory_batches_user_idx on public.inventory_batches(user_id);
+create index inventory_stocktakes_confirmed_by_idx on public.inventory_stocktakes(confirmed_by);
+create index inventory_stocktakes_item_idx on public.inventory_stocktakes(item_id);
+create index inventory_stocktakes_user_idx on public.inventory_stocktakes(user_id);
+create index plan_review_comments_user_idx on public.plan_review_comments(user_id);
+create index resource_dispatches_approved_by_idx on public.resource_dispatches(approved_by);
+create index resource_dispatches_requested_by_idx on public.resource_dispatches(requested_by);
+create index resource_dispatches_user_idx on public.resource_dispatches(user_id);
+create index review_issues_responsible_user_idx on public.review_issues(responsible_user_id);
+create index review_issues_user_idx on public.review_issues(user_id);
+create index task_feedbacks_user_idx on public.task_feedbacks(user_id);

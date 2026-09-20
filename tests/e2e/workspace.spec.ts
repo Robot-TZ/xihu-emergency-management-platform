@@ -16,7 +16,21 @@ test("guest product data persists across refresh", async ({ page }) => {
   await expect(page.getByText("示例数据已保存到本机。")).toBeVisible();
   await page.reload();
   await gotoModule(page, /指挥调度/);
-  await expect(page.getByText("短时强降雨导致道路积水约30厘米")).toBeVisible();
+  await expect(page.getByLabel("事件详情").getByText("短时强降雨导致道路积水约30厘米")).toBeVisible();
+});
+
+test("command center exposes the situation map, seats and incident continuation timeline", async ({ page }) => {
+  await page.getByRole("button", { name: "初始化产品数据" }).click();
+  await gotoModule(page, /指挥调度/);
+  await expect(page.getByRole("img", { name: /态势图/ })).toBeVisible();
+  await page.getByRole("button", { name: "领导席" }).click();
+  await expect(page.getByText("决策摘要")).toBeVisible();
+  await page.getByRole("button", { name: "值班席" }).click();
+  const continuation = page.locator("details").filter({ hasText: "事件续报与状态申请" });
+  await continuation.getByLabel("标题").fill("自动化续报");
+  await continuation.getByLabel("内容").fill("水位已经回落，继续现场排查。\n");
+  await continuation.getByRole("button", { name: "提交并进入时间线" }).click();
+  await expect(page.getByText("自动化续报")).toBeVisible();
 });
 
 test("workspace exposes the tender-aligned product modules via the drawer", async ({ page }) => {

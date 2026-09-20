@@ -3,14 +3,15 @@ import type { InventoryBalance, InventoryDocument, InventoryDocumentLine, Invent
 const createdAt = "2026-09-20T08:00:00+08:00";
 
 export const demoResources: ResourceAsset[] = [
-  { id: "res-team-1", code: "XH-TEAM-001", name: "转塘街道应急队", asset_type: "team", area: "转塘街道", address: "转塘街道办事处", contact_name: "值班长", contact_phone: "0571-00000001", capabilities: ["排涝", "转移", "强降雨"], capacity: 24, status: "available", maintenance_due_at: null, created_at: createdAt },
-  { id: "res-vehicle-1", code: "XH-VEH-001", name: "移动排水车", asset_type: "vehicle", area: "全区", address: "区级物资库", contact_name: "车辆调度", contact_phone: "0571-00000002", capabilities: ["积水", "排涝"], capacity: 300, status: "available", maintenance_due_at: "2026-10-10T00:00:00+08:00", created_at: createdAt },
-  { id: "res-expert-1", code: "XH-EXP-001", name: "地质灾害专家组", asset_type: "expert", area: "全区", address: "区应急指挥中心", contact_name: "专家联络员", contact_phone: "0571-00000003", capabilities: ["地质灾害", "山体"], capacity: 6, status: "available", maintenance_due_at: null, created_at: createdAt },
+  { id: "res-team-1", code: "XH-TEAM-001", name: "转塘街道应急队", asset_type: "team", area: "转塘街道", address: "转塘街道办事处", longitude: 120.082, latitude: 30.162, contact_name: "值班长", contact_phone: "0571-00000001", capabilities: ["排涝", "转移", "强降雨"], capacity: 24, status: "available", maintenance_due_at: null, created_at: createdAt },
+  { id: "res-vehicle-1", code: "XH-VEH-001", name: "移动排水车", asset_type: "vehicle", area: "全区", address: "区级物资库", longitude: 120.104, latitude: 30.235, contact_name: "车辆调度", contact_phone: "0571-00000002", capabilities: ["积水", "排涝"], capacity: 300, status: "available", maintenance_due_at: "2026-10-10T00:00:00+08:00", created_at: createdAt },
+  { id: "res-expert-1", code: "XH-EXP-001", name: "地质灾害专家组", asset_type: "expert", area: "全区", address: "区应急指挥中心", longitude: 120.119, latitude: 30.265, contact_name: "专家联络员", contact_phone: "0571-00000003", capabilities: ["地质灾害", "山体"], capacity: 6, status: "available", maintenance_due_at: null, created_at: createdAt },
+  { id: "res-shelter-1", code: "XH-FAC-001", name: "转塘第一避灾安置点", asset_type: "facility", area: "转塘街道", address: "转塘街道中心学校", longitude: 120.091, latitude: 30.171, contact_name: "安置点管理员", contact_phone: "0571-00000004", capabilities: ["避灾安置", "人员转移"], capacity: 500, status: "available", maintenance_due_at: null, created_at: createdAt },
 ];
 
 export const demoWarehouses: Warehouse[] = [
-  { id: "wh-district", code: "XH-WH-001", name: "西湖区应急物资中心库", area: "全区", address: "西湖区应急指挥中心", contact_name: "库管员", contact_phone: "0571-00000010", active: true, created_at: createdAt },
-  { id: "wh-zhuantang", code: "XH-WH-002", name: "转塘街道前置库", area: "转塘街道", address: "转塘街道", contact_name: "街道库管", contact_phone: "0571-00000011", active: true, created_at: createdAt },
+  { id: "wh-district", code: "XH-WH-001", name: "西湖区应急物资中心库", area: "全区", address: "西湖区应急指挥中心", longitude: 120.119, latitude: 30.265, contact_name: "库管员", contact_phone: "0571-00000010", active: true, created_at: createdAt },
+  { id: "wh-zhuantang", code: "XH-WH-002", name: "转塘街道前置库", area: "转塘街道", address: "转塘街道", longitude: 120.086, latitude: 30.166, contact_name: "街道库管", contact_phone: "0571-00000011", active: true, created_at: createdAt },
 ];
 
 export const demoInventoryItems: InventoryItem[] = [

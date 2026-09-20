@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { rankPlans } from "@/lib/plan-engine";
-import type { EmergencyPlan, EventRecord, PlanTaskTemplate, PlanVersion } from "@/lib/types";
+import type { EmergencyPlan, EventRecord, PlanReviewComment, PlanTaskTemplate, PlanVersion } from "@/lib/types";
 import { StatusBadge } from "./product-pages";
 
 export type PlanLifecycleAction = "submit" | "publish" | "copy" | "retire";
@@ -18,10 +18,11 @@ function latestVersion(planId: string, versions: PlanVersion[]) {
   return versions.filter((item) => item.plan_id === planId).sort((a, b) => b.version_no - a.version_no)[0];
 }
 
-export function PlanCenterPage({ plans, versions, templates, events, activeEventId, writable, admin, onAdd, onLifecycle, onDelete, onStart }: {
+export function PlanCenterPage({ plans, versions, templates, comments, events, activeEventId, writable, admin, onAdd, onLifecycle, onDelete, onStart, onUpdateVersion, onAddComment, onExport }: {
   plans: EmergencyPlan[];
   versions: PlanVersion[];
   templates: PlanTaskTemplate[];
+  comments: PlanReviewComment[];
   events: EventRecord[];
   activeEventId?: string;
   writable: boolean;
@@ -30,6 +31,9 @@ export function PlanCenterPage({ plans, versions, templates, events, activeEvent
   onLifecycle: (plan: EmergencyPlan, version: PlanVersion, action: PlanLifecycleAction) => void;
   onDelete: (plan: EmergencyPlan) => void;
   onStart: (event: EventRecord, plan: EmergencyPlan, version: PlanVersion, templates: PlanTaskTemplate[]) => void;
+  onUpdateVersion: (version: PlanVersion, form: FormData) => void;
+  onAddComment: (version: PlanVersion, form: FormData) => void;
+  onExport: (plan: EmergencyPlan, version: PlanVersion) => void;
 }) {
   const [eventId, setEventId] = useState(activeEventId || "");
   const event = events.find((item) => item.id === eventId) || events[0];
@@ -62,9 +66,9 @@ export function PlanCenterPage({ plans, versions, templates, events, activeEvent
         })}
       </section>
     </div>
-    <section className="panel tablewrap"><h2>预案库与版本生命周期</h2><table><thead><tr><th>预案</th><th>最新版本</th><th>匹配规则</th><th>任务模板</th><th>操作</th></tr></thead><tbody>{plans.map((plan) => {
-      const version = latestVersion(plan.id, versions); const versionTemplates = version ? templates.filter((item) => item.version_id === version.id) : [];
-      return <tr key={plan.id}><td><b>{plan.title}</b><p>{plan.code} · {plan.event_type} · {plan.area}</p><StatusBadge>{planStatusText[plan.status]}</StatusBadge></td><td>{version ? <>V{version.version_no} · {versionStatusText[version.status]}<p>{version.summary}</p><details><summary>查看处置要点</summary><p>{version.content}</p></details></> : "无版本"}</td><td>{version && <><b>{version.type_weight}/{version.level_weight}/{version.keyword_weight}</b><p>{version.response_levels.join("、")}</p><small>{version.keywords.join("、") || "无关键词"}</small></>}</td><td>{versionTemplates.sort((a, b) => a.sort_order - b.sort_order).map((item) => <div key={item.id}>{item.sort_order}. {item.title} · {item.due_minutes}分钟</div>)}</td><td>{version && <div className="actions vertical-actions">{version.status === "draft" && <button disabled={!writable} onClick={() => onLifecycle(plan, version, "submit")}>送审</button>}{version.status === "review" && <button className="primary" disabled={!admin} onClick={() => onLifecycle(plan, version, "publish")}>审核发布</button>}{version.status === "published" && <button disabled={!writable} onClick={() => onLifecycle(plan, version, "copy")}>复制新版本</button>}{plan.status !== "retired" && <button disabled={!admin} onClick={() => onLifecycle(plan, version, "retire")}>作废</button>}<button disabled={!writable || (!admin && plan.status !== "draft")} onClick={() => onDelete(plan)}>删除</button></div>}</td></tr>;
+    <section className="panel tablewrap"><h2>预案库、在线编辑与会签审批</h2><table><thead><tr><th>预案</th><th>最新版本</th><th>匹配规则</th><th>任务模板</th><th>操作</th></tr></thead><tbody>{plans.map((plan) => {
+      const version = latestVersion(plan.id, versions); const versionTemplates = version ? templates.filter((item) => item.version_id === version.id) : []; const previous = version ? versions.filter((item) => item.plan_id === plan.id && item.version_no < version.version_no).sort((a, b) => b.version_no - a.version_no)[0] : undefined; const versionComments = version ? comments.filter((item) => item.version_id === version.id) : [];
+      return <Fragment key={plan.id}><tr><td><b>{plan.title}</b><p>{plan.code} · {plan.event_type} · {plan.area}</p><StatusBadge>{planStatusText[plan.status]}</StatusBadge></td><td>{version ? <>V{version.version_no} · {versionStatusText[version.status]}<p>{version.summary}</p><details><summary>查看处置要点</summary><p>{version.content}</p></details></> : "无版本"}</td><td>{version && <><b>{version.type_weight}/{version.level_weight}/{version.keyword_weight}</b><p>{version.response_levels.join("、")}</p><small>{version.keywords.join("、") || "无关键词"}</small></>}</td><td>{versionTemplates.sort((a, b) => a.sort_order - b.sort_order).map((item) => <div key={item.id}>{item.sort_order}. {item.title} · {item.due_minutes}分钟</div>)}</td><td>{version && <div className="actions vertical-actions">{version.status === "draft" && <button disabled={!writable} onClick={() => onLifecycle(plan, version, "submit")}>送审</button>}{version.status === "review" && <button className="primary" disabled={!admin} onClick={() => onLifecycle(plan, version, "publish")}>审核发布</button>}{version.status === "published" && <button disabled={!writable} onClick={() => onLifecycle(plan, version, "copy")}>复制新版本</button>}<button onClick={() => onExport(plan, version)}>导出正式文档</button>{plan.status !== "retired" && <button disabled={!admin} onClick={() => onLifecycle(plan, version, "retire")}>作废</button>}<button className="danger" disabled={!writable || (!admin && plan.status !== "draft")} onClick={() => onDelete(plan)}>删除</button></div>}</td></tr>{version && <tr className="plan-collaboration-row"><td colSpan={5}><div className="plan-collaboration"><details open={version.status === "draft"}><summary><b>在线编辑 V{version.version_no}</b><small>{version.status === "draft" ? "保存后自动进入修订对比" : "已锁定；复制新版本后编辑"}</small></summary><form className="form form-wide" action={(form) => onUpdateVersion(version, form)}><label>摘要<textarea name="summary" rows={2} defaultValue={version.summary} /></label><label>处置正文<textarea name="content" rows={5} defaultValue={version.content} /></label><label>响应等级<input name="levels" defaultValue={version.response_levels.join(",")} /></label><label>关键词<input name="keywords" defaultValue={version.keywords.join(",")} /></label><button className="primary" disabled={!writable || version.status !== "draft"}>保存修订</button></form><div className="revision-diff"><b>与上一版对比</b><p>{previous ? `摘要：${previous.summary === version.summary ? "无变化" : "已修改"}；处置正文：${previous.content === version.content ? "无变化" : "已修改"}；适用等级：${previous.response_levels.join("、")} → ${version.response_levels.join("、")}` : "这是初始版本，暂无历史版本可比较。"}</p></div></details><details><summary><b>会签与审批意见</b><small>{versionComments.length} 条意见</small></summary><form className="form form-wide" action={(form) => onAddComment(version, form)}><label>意见类型<select name="commentType"><option>会签意见</option><option>审批意见</option><option>退回意见</option></select></label><label>单位<input name="organizationName" required /></label><label>结论<select name="decision"><option value="comment">提出意见</option><option value="agree">同意</option><option value="reject">不同意/退回</option></select></label><label>意见<textarea name="content" required rows={3} /></label><button disabled={!writable}>提交意见</button></form><div className="comment-list">{versionComments.map((item) => <article key={item.id}><StatusBadge mode={item.decision === "reject" ? "external" : item.decision === "agree" ? "real" : "simulated"}>{item.comment_type}</StatusBadge><b>{item.organization_name}</b><p>{item.content}</p><small>{new Date(item.created_at).toLocaleString("zh-CN")}</small></article>)}</div></details></div></td></tr>}</Fragment>;
     })}</tbody></table>{!plans.length && <p className="empty">暂无预案，请创建草稿。</p>}</section>
     <section className="panel dependency"><h2>语义匹配与动态调整</h2><StatusBadge mode="external">真实语料与验收基线待甲方提供</StatusBadge><p>当前规则引擎已支持版本化权重和逐项评分解释。NLP 模型仍需真实预案语料、历史事件及可验收的准确率指标，不使用虚构数据宣称智能化效果。</p></section>
   </>;

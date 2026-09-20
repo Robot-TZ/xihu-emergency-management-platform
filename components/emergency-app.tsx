@@ -9,11 +9,12 @@ import { demoPlans, demoPlanTaskTemplates, demoPlanVersions } from "@/lib/plan-d
 import { parseTaskTemplates } from "@/lib/plan-engine";
 import { demoInventoryBalances, demoInventoryDocumentLines, demoInventoryDocuments, demoInventoryMovements, demoInventoryItems, demoResources, demoRiskBatches, demoRiskFieldChanges, demoRiskWritebackJobs, demoWarehouses } from "@/lib/operations-demo";
 import { demoMonitoringActions, demoMonitoringAlerts, demoMonitoringAssets, demoMonitoringReadings, demoMonitoringRules } from "@/lib/monitoring-demo";
+import { demoBusinessAttachments, demoEventParticipants, demoEventUpdates, demoInventoryBatches, demoInventoryStocktakes, demoPlanComments, demoResourceDispatches, demoReviewIssues, demoTaskFeedbacks } from "@/lib/workflow-demo";
 import { alertFingerprint, evaluateMonitoringRule } from "@/lib/monitoring-engine";
 import { applyInventoryDeltas } from "@/lib/resource-engine";
 import { downloadCsv, downloadWorkbook, readWorkbook, type SheetRow } from "@/lib/spreadsheet";
 import { demoOperationalRecords, moduleMeta, productPages, type ProductPage } from "@/lib/product-catalog";
-import type { ActivityLog, EmergencyPlan, EventRecord, InventoryBalance, InventoryDocument, InventoryDocumentLine, InventoryItem, InventoryMovement, MonitoringAlert, MonitoringAlertAction, MonitoringAsset, MonitoringDomain, MonitoringReading, MonitoringRule, OperationalRecord, Organization, OrganizationMember, PlanTaskTemplate, PlanVersion, ProductModule, Profile, ResourceAsset, RiskFieldChange, RiskImportBatch, RiskRecord, RiskWritebackJob, Role, TaskRecord, TeamInvite, Warehouse } from "@/lib/types";
+import type { ActivityLog, BusinessAttachment, EmergencyPlan, EventParticipant, EventRecord, EventUpdate, InventoryBalance, InventoryBatch, InventoryDocument, InventoryDocumentLine, InventoryItem, InventoryMovement, InventoryStocktake, MonitoringAlert, MonitoringAlertAction, MonitoringAsset, MonitoringDomain, MonitoringReading, MonitoringRule, OperationalRecord, Organization, OrganizationMember, PlanReviewComment, PlanTaskTemplate, PlanVersion, ProductModule, Profile, ResourceAsset, ResourceDispatch, ReviewIssue, RiskFieldChange, RiskImportBatch, RiskRecord, RiskWritebackJob, Role, TaskFeedback, TaskRecord, TeamInvite, Warehouse } from "@/lib/types";
 import { DataPage, LogsPage, OverviewPage, PortalPage } from "./product-pages";
 import { LogoMark } from "./logo-mark";
 import { AdminPage, CommandPage } from "./workflow-pages";
@@ -31,8 +32,11 @@ export type ProductSnapshot = {
   riskBatches: RiskImportBatch[]; riskChanges: RiskFieldChange[]; riskWritebackJobs: RiskWritebackJob[];
   monitoringAssets: MonitoringAsset[]; monitoringReadings: MonitoringReading[]; monitoringRules: MonitoringRule[];
   monitoringAlerts: MonitoringAlert[]; monitoringActions: MonitoringAlertAction[];
+  eventParticipants: EventParticipant[]; eventUpdates: EventUpdate[]; attachments: BusinessAttachment[]; taskFeedbacks: TaskFeedback[];
+  planComments: PlanReviewComment[]; resourceDispatches: ResourceDispatch[]; inventoryBatches: InventoryBatch[];
+  inventoryStocktakes: InventoryStocktake[]; reviewIssues: ReviewIssue[];
 };
-const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [], plans: [], planVersions: [], planTemplates: [], resources: [], warehouses: [], inventoryItems: [], inventoryBalances: [], inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: [], riskChanges: [], riskWritebackJobs: [], monitoringAssets: [], monitoringReadings: [], monitoringRules: [], monitoringAlerts: [], monitoringActions: [] };
+const empty: ProductSnapshot = { events: [], tasks: [], risks: [], logs: [], records: [], plans: [], planVersions: [], planTemplates: [], resources: [], warehouses: [], inventoryItems: [], inventoryBalances: [], inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: [], riskChanges: [], riskWritebackJobs: [], monitoringAssets: [], monitoringReadings: [], monitoringRules: [], monitoringAlerts: [], monitoringActions: [], eventParticipants: [], eventUpdates: [], attachments: [], taskFeedbacks: [], planComments: [], resourceDispatches: [], inventoryBatches: [], inventoryStocktakes: [], reviewIssues: [] };
 const LOCAL_KEY = "xihu-emergency-product-v2";
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
@@ -80,9 +84,18 @@ function loadLocal(): ProductSnapshot {
       monitoringRules: Array.isArray(parsed.monitoringRules) ? parsed.monitoringRules : demoMonitoringRules,
       monitoringAlerts: Array.isArray(parsed.monitoringAlerts) ? parsed.monitoringAlerts : demoMonitoringAlerts,
       monitoringActions: Array.isArray(parsed.monitoringActions) ? parsed.monitoringActions : demoMonitoringActions,
+      eventParticipants: Array.isArray(parsed.eventParticipants) ? parsed.eventParticipants : demoEventParticipants,
+      eventUpdates: Array.isArray(parsed.eventUpdates) ? parsed.eventUpdates : demoEventUpdates,
+      attachments: Array.isArray(parsed.attachments) ? parsed.attachments : demoBusinessAttachments,
+      taskFeedbacks: Array.isArray(parsed.taskFeedbacks) ? parsed.taskFeedbacks : demoTaskFeedbacks,
+      planComments: Array.isArray(parsed.planComments) ? parsed.planComments : demoPlanComments,
+      resourceDispatches: Array.isArray(parsed.resourceDispatches) ? parsed.resourceDispatches : demoResourceDispatches,
+      inventoryBatches: Array.isArray(parsed.inventoryBatches) ? parsed.inventoryBatches : demoInventoryBatches,
+      inventoryStocktakes: Array.isArray(parsed.inventoryStocktakes) ? parsed.inventoryStocktakes : demoInventoryStocktakes,
+      reviewIssues: Array.isArray(parsed.reviewIssues) ? parsed.reviewIssues : demoReviewIssues,
     };
   } catch { /* corrupted visitor data falls back to safe defaults */ }
-  return { ...empty, records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: demoInventoryDocuments, inventoryDocumentLines: demoInventoryDocumentLines, inventoryMovements: demoInventoryMovements, riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: demoRiskWritebackJobs, monitoringAssets: demoMonitoringAssets, monitoringReadings: demoMonitoringReadings, monitoringRules: demoMonitoringRules, monitoringAlerts: demoMonitoringAlerts, monitoringActions: demoMonitoringActions };
+  return { ...empty, records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: demoInventoryDocuments, inventoryDocumentLines: demoInventoryDocumentLines, inventoryMovements: demoInventoryMovements, riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: demoRiskWritebackJobs, monitoringAssets: demoMonitoringAssets, monitoringReadings: demoMonitoringReadings, monitoringRules: demoMonitoringRules, monitoringAlerts: demoMonitoringAlerts, monitoringActions: demoMonitoringActions, eventParticipants: demoEventParticipants, eventUpdates: demoEventUpdates, attachments: demoBusinessAttachments, taskFeedbacks: demoTaskFeedbacks, planComments: demoPlanComments, resourceDispatches: demoResourceDispatches, inventoryBatches: demoInventoryBatches, inventoryStocktakes: demoInventoryStocktakes, reviewIssues: demoReviewIssues };
 }
 function withLocalLog(data: ProductSnapshot, action: string, entity_type: string, detail: Record<string, unknown> = {}): ProductSnapshot {
   return { ...data, logs: [{ id: uid(), action, entity_type, detail, created_at: now() }, ...data.logs] };
@@ -103,7 +116,10 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
   const [notice, setNotice] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeEventId, setActiveEventId] = useState(initialEventId || "");
+  const [realtimeStatus, setRealtimeStatus] = useState<"连接中" | "实时在线" | "已降级">("连接中");
+  const [realtimeMessage, setRealtimeMessage] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
+  const realtimeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     if (!hasSupabaseConfig()) { if (allowGuestDemo) setData(loadLocal()); setLoading(false); return; }
@@ -121,7 +137,7 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     const currentActive = profileResult.data?.active !== false;
     setRole(currentRole);
     setAccountActive(currentActive);
-    const [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, monitoringAssets, monitoringReadings, monitoringRules, monitoringAlerts, monitoringActions, orgs, orgMembers, visibleProfiles] = await Promise.all([
+    const [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, monitoringAssets, monitoringReadings, monitoringRules, monitoringAlerts, monitoringActions, eventParticipants, eventUpdates, attachments, taskFeedbacks, planComments, resourceDispatches, inventoryBatches, inventoryStocktakes, reviewIssues, orgs, orgMembers, visibleProfiles] = await Promise.all([
       supabase.from("events").select("*").order("created_at", { ascending: false }),
       supabase.from("tasks").select("*").order("created_at", { ascending: false }),
       supabase.from("risk_records").select("*").order("created_at", { ascending: false }),
@@ -145,13 +161,22 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
       supabase.from("monitoring_rules").select("*").order("created_at", { ascending: false }),
       supabase.from("monitoring_alerts").select("*").order("last_triggered_at", { ascending: false }),
       supabase.from("monitoring_alert_actions").select("*").order("created_at", { ascending: false }).limit(300),
+      supabase.from("event_participants").select("*").order("created_at"),
+      supabase.from("event_updates").select("*").order("created_at", { ascending: false }),
+      supabase.from("business_attachments").select("*").order("created_at", { ascending: false }),
+      supabase.from("task_feedbacks").select("*").order("created_at", { ascending: false }),
+      supabase.from("plan_review_comments").select("*").order("created_at", { ascending: false }),
+      supabase.from("resource_dispatches").select("*").order("updated_at", { ascending: false }),
+      supabase.from("inventory_batches").select("*").order("created_at", { ascending: false }),
+      supabase.from("inventory_stocktakes").select("*").order("created_at", { ascending: false }),
+      supabase.from("review_issues").select("*").order("created_at", { ascending: false }),
       supabase.from("organizations").select("*").order("name"),
       supabase.from("organization_members").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("id,email,display_name,role,organization,job_title,active,created_at").order("created_at", { ascending: false }),
     ]);
-    const failure = [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, monitoringAssets, monitoringReadings, monitoringRules, monitoringAlerts, monitoringActions, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
+    const failure = [events, tasks, risks, logs, records, plans, planVersions, planTemplates, resources, warehouses, inventoryItems, inventoryBalances, inventoryDocuments, inventoryDocumentLines, inventoryMovements, riskBatches, riskChanges, riskWritebackJobs, monitoringAssets, monitoringReadings, monitoringRules, monitoringAlerts, monitoringActions, eventParticipants, eventUpdates, attachments, taskFeedbacks, planComments, resourceDispatches, inventoryBatches, inventoryStocktakes, reviewIssues, orgs, orgMembers, visibleProfiles].find((result) => result.error)?.error;
     if (failure) setNotice("数据读取失败：" + failure.message);
-    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[], plans: (plans.data || []) as EmergencyPlan[], planVersions: (planVersions.data || []) as PlanVersion[], planTemplates: (planTemplates.data || []) as PlanTaskTemplate[], resources: (resources.data || []) as ResourceAsset[], warehouses: (warehouses.data || []) as Warehouse[], inventoryItems: (inventoryItems.data || []) as InventoryItem[], inventoryBalances: (inventoryBalances.data || []) as InventoryBalance[], inventoryDocuments: (inventoryDocuments.data || []) as InventoryDocument[], inventoryDocumentLines: (inventoryDocumentLines.data || []) as InventoryDocumentLine[], inventoryMovements: (inventoryMovements.data || []) as InventoryMovement[], riskBatches: (riskBatches.data || []) as RiskImportBatch[], riskChanges: (riskChanges.data || []) as RiskFieldChange[], riskWritebackJobs: (riskWritebackJobs.data || []) as RiskWritebackJob[], monitoringAssets: (monitoringAssets.data || []) as MonitoringAsset[], monitoringReadings: (monitoringReadings.data || []) as MonitoringReading[], monitoringRules: (monitoringRules.data || []) as MonitoringRule[], monitoringAlerts: (monitoringAlerts.data || []) as MonitoringAlert[], monitoringActions: (monitoringActions.data || []) as MonitoringAlertAction[] });
+    setData({ events: (events.data || []) as EventRecord[], tasks: (tasks.data || []) as TaskRecord[], risks: (risks.data || []) as RiskRecord[], logs: (logs.data || []) as ActivityLog[], records: (records.data || []) as OperationalRecord[], plans: (plans.data || []) as EmergencyPlan[], planVersions: (planVersions.data || []) as PlanVersion[], planTemplates: (planTemplates.data || []) as PlanTaskTemplate[], resources: (resources.data || []) as ResourceAsset[], warehouses: (warehouses.data || []) as Warehouse[], inventoryItems: (inventoryItems.data || []) as InventoryItem[], inventoryBalances: (inventoryBalances.data || []) as InventoryBalance[], inventoryDocuments: (inventoryDocuments.data || []) as InventoryDocument[], inventoryDocumentLines: (inventoryDocumentLines.data || []) as InventoryDocumentLine[], inventoryMovements: (inventoryMovements.data || []) as InventoryMovement[], riskBatches: (riskBatches.data || []) as RiskImportBatch[], riskChanges: (riskChanges.data || []) as RiskFieldChange[], riskWritebackJobs: (riskWritebackJobs.data || []) as RiskWritebackJob[], monitoringAssets: (monitoringAssets.data || []) as MonitoringAsset[], monitoringReadings: (monitoringReadings.data || []) as MonitoringReading[], monitoringRules: (monitoringRules.data || []) as MonitoringRule[], monitoringAlerts: (monitoringAlerts.data || []) as MonitoringAlert[], monitoringActions: (monitoringActions.data || []) as MonitoringAlertAction[], eventParticipants: (eventParticipants.data || []) as EventParticipant[], eventUpdates: (eventUpdates.data || []) as EventUpdate[], attachments: (attachments.data || []) as BusinessAttachment[], taskFeedbacks: (taskFeedbacks.data || []) as TaskFeedback[], planComments: (planComments.data || []) as PlanReviewComment[], resourceDispatches: (resourceDispatches.data || []) as ResourceDispatch[], inventoryBatches: (inventoryBatches.data || []) as InventoryBatch[], inventoryStocktakes: (inventoryStocktakes.data || []) as InventoryStocktake[], reviewIssues: (reviewIssues.data || []) as ReviewIssue[] });
     setOrganizations((orgs.data || []) as Organization[]);
     setMemberships((orgMembers.data || []) as OrganizationMember[]);
     setProfiles((visibleProfiles.data || []) as Profile[]);
@@ -168,6 +193,27 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     const { data: listener } = createClient().auth.onAuthStateChange(() => void load());
     return () => listener.subscription.unsubscribe();
   }, [load]);
+  useEffect(() => {
+    if (!user || !hasSupabaseConfig()) return;
+    const supabase = createClient();
+    let channel = supabase.channel(`operations-${user.id}`);
+    const reloadSoon = () => {
+      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+      realtimeTimer.current = setTimeout(() => void load(), 350);
+    };
+    const realtimeLabels: Record<string, string> = { events: "事件", tasks: "指令", monitoring_alerts: "告警", event_updates: "事件动态", task_feedbacks: "现场反馈", resource_dispatches: "资源调度", review_issues: "整改任务" };
+    for (const table of Object.keys(realtimeLabels)) {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {
+        setRealtimeMessage(`${realtimeLabels[table]}已实时更新`);
+        reloadSoon();
+      });
+    }
+    channel.subscribe((status) => setRealtimeStatus(status === "SUBSCRIBED" ? "实时在线" : status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "已降级" : "连接中"));
+    return () => {
+      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+      void supabase.removeChannel(channel);
+    };
+  }, [user, load]);
   useEffect(() => { if (allowGuestDemo && !user && !loading) localStorage.setItem(LOCAL_KEY, JSON.stringify(data)); }, [allowGuestDemo, data, user, loading]);
 
   function navigate(nextPage: ProductPage, eventId: string = activeEventId) {
@@ -189,7 +235,7 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
 
   async function seed() {
     if (!requireWrite()) return;
-    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: [], monitoringAssets: demoMonitoringAssets, monitoringReadings: demoMonitoringReadings, monitoringRules: demoMonitoringRules, monitoringAlerts: demoMonitoringAlerts, monitoringActions: demoMonitoringActions }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
+    if (!user) { setData(withLocalLog({ events: [demoEvent], tasks: demoTasks, risks: demoRisks, logs: [], records: demoOperationalRecords, plans: demoPlans, planVersions: demoPlanVersions, planTemplates: demoPlanTaskTemplates, resources: demoResources, warehouses: demoWarehouses, inventoryItems: demoInventoryItems, inventoryBalances: demoInventoryBalances, inventoryDocuments: [], inventoryDocumentLines: [], inventoryMovements: [], riskBatches: demoRiskBatches, riskChanges: demoRiskFieldChanges, riskWritebackJobs: [], monitoringAssets: demoMonitoringAssets, monitoringReadings: demoMonitoringReadings, monitoringRules: demoMonitoringRules, monitoringAlerts: demoMonitoringAlerts, monitoringActions: demoMonitoringActions, eventParticipants: demoEventParticipants, eventUpdates: demoEventUpdates, attachments: demoBusinessAttachments, taskFeedbacks: demoTaskFeedbacks, planComments: demoPlanComments, resourceDispatches: demoResourceDispatches, inventoryBatches: demoInventoryBatches, inventoryStocktakes: demoInventoryStocktakes, reviewIssues: demoReviewIssues }, "初始化产品数据", "workspace")); setNotice("示例数据已保存到本机。"); return; }
     const supabase = createClient();
     if (!data.events.length) await supabase.from("events").insert({ ...forInsert(demoEvent), user_id: user.id });
     if (!data.records.length) await supabase.from("operational_records").insert(demoOperationalRecords.map((record) => ({ ...forInsert(record), user_id: user.id })));
@@ -212,16 +258,15 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
 
   async function addEvent(form: FormData) {
     if (!requireWrite()) return;
-    const record: EventRecord = { id: uid(), event_type: String(form.get("type")), response_level: String(form.get("level")), area: String(form.get("area")), happened_at: now(), description: String(form.get("description")), status: "待研判", created_at: now() };
+    const record: EventRecord = { id: uid(), event_type: String(form.get("type")), response_level: String(form.get("level")), area: String(form.get("area")), address: String(form.get("address") || ""), longitude: Number(form.get("longitude")) || null, latitude: Number(form.get("latitude")) || null, happened_at: String(form.get("happenedAt") || "") ? new Date(String(form.get("happenedAt"))).toISOString() : now(), description: String(form.get("description")), status: "待研判", created_at: now() };
     if (!user) setData((current) => withLocalLog({ ...current, events: [record, ...current.events] }, "新增事件", "event", { area: record.area }));
     else { const { error } = await createClient().from("events").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增事件", "event", undefined, { area: record.area }); await load(); }
     setNotice("事件已保存。");
   }
   async function progressEvent(event: EventRecord) {
     if (!requireWrite()) return;
+    if (event.status === "处置中") return setNotice("事件结案必须在“事件续报与状态申请”中提交申请，并由管理员审批。");
     const status = event.status === "待研判" ? "已研判" : event.status === "已研判" ? "处置中" : "已结案";
-    if (status === "已结案" && data.tasks.some((item) => item.event_id === event.id && item.status !== "已完成")) return setNotice("仍有未完成任务，不能结案。请先完成任务或记录异常处置结果。");
-    if (status === "已结案" && !confirmAction("确认所有处置结果均已复核，并将该事件结案？")) return;
     if (!user) setData((current) => withLocalLog({ ...current, events: current.events.map((item) => item.id === event.id ? { ...item, status } : item) }, "推进事件", "event", { status }));
     else { const { error } = await createClient().from("events").update({ status, updated_at: now() }).eq("id", event.id); if (error) return setNotice(error.message); await audit("推进事件", "event", event.id, { status }); await load(); }
   }
@@ -248,8 +293,10 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
   }
   async function progressTask(task: TaskRecord) {
     if (!requireWrite()) return;
-    const status = task.status === "待查阅" ? "已读" : task.status === "已读" ? "已反馈" : "已完成";
-    const timing = status === "已读" ? { read_at: now() } : status === "已反馈" ? { feedback_at: now(), feedback: "已提交现场反馈" } : { completed_at: now() };
+    if (task.status === "已读") return setNotice("请在上方“现场反馈复核台”填写文字、定位并上传现场图片或文件。");
+    if (task.status === "已反馈") return setNotice("反馈正在等待复核，不能直接确认完成。");
+    const status = "已读" as const;
+    const timing = { read_at: now() };
     if (!user) setData((current) => withLocalLog({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? { ...item, status, ...timing } : item) }, "推进指令任务", "task", { status }));
     else { const { error } = await createClient().from("tasks").update({ status, ...timing, updated_at: now() }).eq("id", task.id); if (error) return setNotice(error.message); await audit("推进指令任务", "task", task.id, { status }); await load(); }
   }
@@ -258,6 +305,76 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     if (!confirmAction("删除任务会移除处置记录。正式业务建议保留并完成或关闭，仍要删除吗？")) return;
     if (!user) setData((current) => withLocalLog({ ...current, tasks: current.tasks.filter((item) => item.id !== taskId) }, "删除指令任务", "task"));
     else { const { error } = await createClient().from("tasks").delete().eq("id", taskId); if (error) return setNotice(error.message); await audit("删除指令任务", "task", taskId); await load(); }
+  }
+
+  async function addEventParticipant(eventId: string, form: FormData) {
+    if (!requireWrite()) return;
+    const participant: EventParticipant = { id: uid(), event_id: eventId, organization_id: String(form.get("organizationId") || "") || null, organization_name: String(form.get("organizationName")), responsibility: String(form.get("responsibility") || ""), contact_name: String(form.get("contactName") || ""), contact_phone: String(form.get("contactPhone") || ""), created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, eventParticipants: [participant, ...current.eventParticipants] }, "添加事件参与单位", "event_participant"));
+    else { const { error } = await createClient().from("event_participants").insert({ ...forInsert(participant), user_id: user.id }); if (error) return setNotice(error.message); await audit("添加事件参与单位", "event", eventId, { organization: participant.organization_name }); await load(); }
+    setNotice("参与单位已加入事件协同。");
+  }
+
+  async function addEventUpdate(event: EventRecord, form: FormData) {
+    if (!requireWrite()) return;
+    const action = String(form.get("action") || "续报");
+    const targetLevel = String(form.get("targetLevel") || "");
+    const requiresApproval = ["升级", "降级", "终止", "结案"].includes(action);
+    const update: EventUpdate = { id: uid(), event_id: event.id, update_type: requiresApproval ? "审批申请" : action === "处置记录" ? "处置记录" : "续报", title: requiresApproval ? `${action}申请` : String(form.get("title") || action), content: String(form.get("content") || ""), from_level: event.response_level, to_level: targetLevel, approval_status: requiresApproval ? "pending" : "not_required", longitude: Number(form.get("longitude")) || null, latitude: Number(form.get("latitude")) || null, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, eventUpdates: [update, ...current.eventUpdates] }, requiresApproval ? `提交事件${action}审批` : `新增事件${action}`, "event_update"));
+    else { const { error } = await createClient().from("event_updates").insert({ ...forInsert(update), user_id: user.id }); if (error) return setNotice(error.message); await audit(update.title, "event", event.id); await load(); }
+    setNotice(requiresApproval ? `${action}申请已提交，等待管理员审批。` : `${action}已记录并同步至事件时间线。`);
+  }
+
+  async function decideEventUpdate(event: EventRecord, update: EventUpdate, approve: boolean) {
+    if (!requireWrite() || (user && role !== "admin")) return setNotice("只有管理员可以审批事件等级、终止和结案申请。");
+    const action = update.title.replace("申请", "");
+    if (approve && action === "结案" && data.tasks.some((item) => item.event_id === event.id && item.status !== "已完成")) return setNotice("仍有未完成任务，不能批准结案。请先完成任务或记录异常处置结果。");
+    if (!confirmAction(`${approve ? "批准" : "退回"}${update.title}？该决定将写入事件状态历史。`)) return;
+    const decision: EventUpdate["approval_status"] = approve ? "approved" : "rejected";
+    const patch: Partial<EventRecord> = approve ? action === "升级" || action === "降级" ? { response_level: update.to_level } : action === "终止" ? { status: "已终止", ended_at: now() } : action === "结案" ? { status: "已结案", closed_at: now() } : {} : {};
+    const opinion: EventUpdate = { id: uid(), event_id: event.id, update_type: "审批意见", title: `${update.title}${approve ? "通过" : "退回"}`, content: approve ? "审批通过，事件主数据已同步更新。" : "审批退回，请补充依据后重新申请。", from_level: event.response_level, to_level: update.to_level, approval_status: approve ? "approved" : "rejected", created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, events: current.events.map((item) => item.id === event.id ? { ...item, ...patch } : item), eventUpdates: [opinion, ...current.eventUpdates.map((item) => item.id === update.id ? { ...item, approval_status: decision } : item)] }, "审批事件状态申请", "event_update"));
+    else { const supabase = createClient(); const changed = await supabase.from("event_updates").update({ approval_status: approve ? "approved" : "rejected" }).eq("id", update.id); if (changed.error) return setNotice(changed.error.message); if (approve && Object.keys(patch).length) { const updated = await supabase.from("events").update({ ...patch, updated_at: now() }).eq("id", event.id); if (updated.error) return setNotice(updated.error.message); } const logged = await supabase.from("event_updates").insert({ ...forInsert(opinion), user_id: user.id }); if (logged.error) return setNotice(logged.error.message); await audit("审批事件状态申请", "event", event.id, { approve, action }); await load(); }
+    setNotice(approve ? "审批已通过，事件状态已更新。" : "申请已退回并保留审批意见。");
+  }
+
+  async function addTaskFeedback(task: TaskRecord, form: FormData) {
+    if (!requireWrite()) return;
+    const feedback: TaskFeedback = { id: uid(), task_id: task.id, feedback_type: "现场反馈", content: String(form.get("content")), longitude: Number(form.get("longitude")) || null, latitude: Number(form.get("latitude")) || null, created_at: now() };
+    const taskPatch = { status: "已反馈" as const, feedback: feedback.content, feedback_at: now(), feedback_longitude: feedback.longitude, feedback_latitude: feedback.latitude, review_status: "pending" as const, returned_reason: "" };
+    if (!user) setData((current) => withLocalLog({ ...current, taskFeedbacks: [feedback, ...current.taskFeedbacks], tasks: current.tasks.map((item) => item.id === task.id ? { ...item, ...taskPatch } : item) }, "提交指令现场反馈", "task_feedback"));
+    else { const supabase = createClient(); const created = await supabase.from("task_feedbacks").insert({ ...forInsert(feedback), user_id: user.id }); if (created.error) return setNotice(created.error.message); const updated = await supabase.from("tasks").update({ ...taskPatch, updated_at: now() }).eq("id", task.id); if (updated.error) return setNotice(updated.error.message); await audit("提交指令现场反馈", "task", task.id); await load(); }
+    setNotice("现场反馈已提交，等待复核。");
+  }
+
+  async function reviewTaskFeedback(task: TaskRecord, approve: boolean, reason = "") {
+    if (!requireWrite()) return;
+    if (!approve && !reason.trim()) return setNotice("退回反馈必须填写原因。");
+    const patch = approve ? { status: "已完成" as const, review_status: "approved" as const, completed_at: now(), returned_reason: "" } : { status: "已读" as const, review_status: "returned" as const, returned_reason: reason };
+    const feedback: TaskFeedback = { id: uid(), task_id: task.id, feedback_type: approve ? "审核意见" : "退回说明", content: approve ? "现场反馈复核通过，任务确认完成。" : reason, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, taskFeedbacks: [feedback, ...current.taskFeedbacks], tasks: current.tasks.map((item) => item.id === task.id ? { ...item, ...patch } : item) }, approve ? "复核通过任务反馈" : "退回任务反馈", "task_feedback"));
+    else { const supabase = createClient(); const updated = await supabase.from("tasks").update({ ...patch, updated_at: now() }).eq("id", task.id); if (updated.error) return setNotice(updated.error.message); const added = await supabase.from("task_feedbacks").insert({ ...forInsert(feedback), user_id: user.id }); if (added.error) return setNotice(added.error.message); await audit(approve ? "复核通过任务反馈" : "退回任务反馈", "task", task.id, { reason }); await load(); }
+    setNotice(approve ? "反馈复核通过，任务已完成。" : "反馈已退回承办人补充。");
+  }
+
+  async function uploadAttachment(entityType: BusinessAttachment["entity_type"], entityId: string, file?: File, category = "文件") {
+    if (!file || !requireWrite()) return;
+    if (file.size > 20 * 1024 * 1024) return setNotice("单个附件不能超过 20MB。");
+    const attachment: BusinessAttachment = { id: uid(), entity_type: entityType, entity_id: entityId, file_name: file.name, storage_path: "", mime_type: file.type || "application/octet-stream", file_size: file.size, category, created_at: now() };
+    if (!user) {
+      const reader = new FileReader(); reader.onload = () => { setData((current) => withLocalLog({ ...current, attachments: [{ ...attachment, storage_path: String(reader.result) }, ...current.attachments] }, "上传业务附件", "business_attachment")); setNotice("附件已保存到本机演示数据。"); }; reader.readAsDataURL(file); return;
+    }
+    const path = `${user.id}/${entityType}/${entityId}/${uid()}-${file.name.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
+    const supabase = createClient(); const uploaded = await supabase.storage.from("business-attachments").upload(path, file, { contentType: attachment.mime_type, upsert: false }); if (uploaded.error) return setNotice(uploaded.error.message);
+    const stored = await supabase.from("business_attachments").insert({ ...forInsert({ ...attachment, storage_path: path }), user_id: user.id }); if (stored.error) { await supabase.storage.from("business-attachments").remove([path]); return setNotice(stored.error.message); }
+    await audit("上传业务附件", entityType, entityId, { fileName: file.name }); await load(); setNotice("附件已加密存储并关联业务记录。");
+  }
+
+  async function downloadAttachment(attachment: BusinessAttachment) {
+    let url = attachment.storage_path;
+    if (user && !url.startsWith("data:")) { const result = await createClient().storage.from("business-attachments").createSignedUrl(url, 60); if (result.error) return setNotice(result.error.message); url = result.data.signedUrl; }
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = attachment.file_name; anchor.target = "_blank"; anchor.rel = "noopener"; anchor.click();
   }
   async function addPlan(form: FormData) {
     if (!requireWrite()) return;
@@ -330,6 +447,30 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     setNotice(action === "submit" ? "已送审，等待管理员审核。" : action === "publish" ? "新版本已发布，旧版本已归档。" : action === "copy" ? "已复制为新草稿版本。" : "预案已作废。");
   }
 
+  async function updatePlanVersion(version: PlanVersion, form: FormData) {
+    if (!requireWrite()) return;
+    if (version.status !== "draft") return setNotice("只有草稿版本允许在线编辑，请先复制为新版本。");
+    const patch = { summary: String(form.get("summary")), content: String(form.get("content")), response_levels: String(form.get("levels") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), keywords: String(form.get("keywords") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), updated_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, planVersions: current.planVersions.map((item) => item.id === version.id ? { ...item, ...patch } : item) }, "在线编辑预案版本", "plan_version"));
+    else { const { error } = await createClient().from("plan_versions").update(patch).eq("id", version.id); if (error) return setNotice(error.message); await audit("在线编辑预案版本", "plan_version", version.id); await load(); }
+    setNotice("预案草稿已保存，修订对比已更新。");
+  }
+
+  async function addPlanComment(version: PlanVersion, form: FormData) {
+    if (!requireWrite()) return;
+    const comment: PlanReviewComment = { id: uid(), version_id: version.id, comment_type: String(form.get("commentType")) as PlanReviewComment["comment_type"], organization_name: String(form.get("organizationName") || ""), content: String(form.get("content")), decision: String(form.get("decision") || "comment") as PlanReviewComment["decision"], created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, planComments: [comment, ...current.planComments] }, "提交预案会签审批意见", "plan_review_comment"));
+    else { const { error } = await createClient().from("plan_review_comments").insert({ ...forInsert(comment), user_id: user.id }); if (error) return setNotice(error.message); await audit("提交预案会签审批意见", "plan_version", version.id, { decision: comment.decision }); await load(); }
+    setNotice("会签或审批意见已保存。");
+  }
+
+  function exportPlanDocument(plan: EmergencyPlan, version: PlanVersion) {
+    const comments = data.planComments.filter((item) => item.version_id === version.id);
+    const previous = data.planVersions.filter((item) => item.plan_id === plan.id && item.version_no < version.version_no).sort((a, b) => b.version_no - a.version_no)[0];
+    const body = `<!doctype html><meta charset="utf-8"><style>body{font-family:SimSun,serif;line-height:1.8;margin:48px}h1{text-align:center}table{border-collapse:collapse;width:100%}td,th{border:1px solid #888;padding:8px}</style><h1>${plan.title}</h1><p style="text-align:center">编号：${plan.code}　版本：V${version.version_no}　状态：${version.status}</p><h2>一、适用范围</h2><p>${plan.event_type}｜${plan.area}｜${version.response_levels.join("、")}</p><h2>二、预案摘要</h2><p>${version.summary}</p><h2>三、处置要点</h2><p>${version.content.replaceAll("\n", "<br>")}</p><h2>四、修订说明</h2><p>${previous ? `相较 V${previous.version_no}：摘要${previous.summary === version.summary ? "未变" : "已调整"}；处置正文${previous.content === version.content ? "未变" : "已调整"}。` : "初始版本。"}</p><h2>五、会签审批记录</h2><table><tr><th>单位</th><th>类型</th><th>决定</th><th>意见</th><th>时间</th></tr>${comments.map((item) => `<tr><td>${item.organization_name}</td><td>${item.comment_type}</td><td>${item.decision}</td><td>${item.content}</td><td>${new Date(item.created_at).toLocaleString("zh-CN")}</td></tr>`).join("")}</table>`;
+    const anchor = document.createElement("a"); anchor.href = URL.createObjectURL(new Blob([body], { type: "application/msword;charset=utf-8" })); anchor.download = `${plan.code}-V${version.version_no}-${plan.title}.doc`; anchor.click(); URL.revokeObjectURL(anchor.href);
+  }
+
   async function removePlan(plan: EmergencyPlan) {
     if (!requireWrite()) return;
     if (plan.status !== "draft") return setNotice("非草稿预案不得直接删除，请使用“作废”保留版本和审计记录。");
@@ -356,7 +497,7 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
 
   async function addResource(form: FormData) {
     if (!requireWrite()) return;
-    const record: ResourceAsset = { id: uid(), code: String(form.get("code")).trim().toUpperCase(), name: String(form.get("name")), asset_type: String(form.get("assetType")) as ResourceAsset["asset_type"], area: String(form.get("area") || "全区"), address: String(form.get("address") || ""), contact_name: String(form.get("contactName") || ""), contact_phone: String(form.get("contactPhone") || ""), capabilities: String(form.get("capabilities") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), capacity: Number(form.get("capacity") || 0), status: "available", maintenance_due_at: String(form.get("maintenanceDueAt") || "") || null, created_at: now() };
+    const record: ResourceAsset = { id: uid(), code: String(form.get("code")).trim().toUpperCase(), name: String(form.get("name")), asset_type: String(form.get("assetType")) as ResourceAsset["asset_type"], area: String(form.get("area") || "全区"), address: String(form.get("address") || ""), longitude: Number(form.get("longitude")) || null, latitude: Number(form.get("latitude")) || null, contact_name: String(form.get("contactName") || ""), contact_phone: String(form.get("contactPhone") || ""), capabilities: String(form.get("capabilities") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), capacity: Number(form.get("capacity") || 0), status: "available", maintenance_due_at: String(form.get("maintenanceDueAt") || "") || null, created_at: now() };
     if (!user) setData((current) => withLocalLog({ ...current, resources: [record, ...current.resources] }, "新增应急资源", "resource_asset", { code: record.code }));
     else { const { error } = await createClient().from("resource_assets").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增应急资源", "resource_asset", undefined, { code: record.code }); await load(); }
     setNotice("应急资源已保存。");
@@ -365,6 +506,24 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     if (!requireWrite()) return;
     if (!user) setData((current) => withLocalLog({ ...current, resources: current.resources.map((item) => item.id === resource.id ? { ...item, status, updated_at: now() } : item) }, "更新资源状态", "resource_asset", { status }));
     else { const { error } = await createClient().from("resource_assets").update({ status, updated_at: now() }).eq("id", resource.id); if (error) return setNotice(error.message); await audit("更新资源状态", "resource_asset", resource.id, { status }); await load(); }
+  }
+  async function createResourceDispatch(eventId: string, resourceId: string, note: string) {
+    if (!requireWrite()) return;
+    if (!eventId || !resourceId) return setNotice("请选择事件和调度资源。");
+    const dispatch: ResourceDispatch = { id: uid(), event_id: eventId, resource_id: resourceId, request_note: note, status: "requested", requested_at: now(), updated_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, resourceDispatches: [dispatch, ...current.resourceDispatches] }, "提交资源调度申请", "resource_dispatch"));
+    else { const { error } = await createClient().from("resource_dispatches").insert({ ...forInsert(dispatch), user_id: user.id, requested_by: user.id }); if (error) return setNotice(error.message); await audit("提交资源调度申请", "resource_dispatch", undefined, { eventId, resourceId }); await load(); }
+    setNotice("资源调度申请已提交。");
+  }
+  async function progressResourceDispatch(dispatch: ResourceDispatch) {
+    if (!requireWrite()) return;
+    if (dispatch.status === "requested" && user && role !== "admin") return setNotice("资源调度审批仅允许管理员执行。");
+    const next: ResourceDispatch["status"] = dispatch.status === "requested" ? "approved" : dispatch.status === "approved" ? "dispatched" : dispatch.status === "dispatched" ? "arrived" : "returned";
+    const timestamp = now(); const patch = { status: next, updated_at: timestamp, ...(next === "approved" ? { approved_at: timestamp, approved_by: user?.id || null } : next === "dispatched" ? { dispatched_at: timestamp } : next === "arrived" ? { arrived_at: timestamp } : { returned_at: timestamp }) };
+    const resourceStatus: ResourceAsset["status"] = next === "dispatched" || next === "arrived" ? "dispatched" : next === "returned" ? "available" : data.resources.find((item) => item.id === dispatch.resource_id)?.status || "available";
+    if (!user) setData((current) => withLocalLog({ ...current, resourceDispatches: current.resourceDispatches.map((item) => item.id === dispatch.id ? { ...item, ...patch } : item), resources: current.resources.map((item) => item.id === dispatch.resource_id ? { ...item, status: resourceStatus } : item) }, "推进资源调度", "resource_dispatch", { status: next }));
+    else { const supabase = createClient(); const changed = await supabase.from("resource_dispatches").update(patch).eq("id", dispatch.id); if (changed.error) return setNotice(changed.error.message); if (["dispatched", "arrived", "returned"].includes(next)) { const resource = await supabase.from("resource_assets").update({ status: resourceStatus, updated_at: timestamp }).eq("id", dispatch.resource_id); if (resource.error) return setNotice(resource.error.message); } await audit("推进资源调度", "resource_dispatch", dispatch.id, { status: next }); await load(); }
+    setNotice(`调度状态已更新为：${next}。`);
   }
   async function importResources(file?: File) {
     if (!file || !requireWrite()) return;
@@ -381,7 +540,7 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
 
   async function addWarehouse(form: FormData) {
     if (!requireWrite()) return;
-    const record: Warehouse = { id: uid(), code: String(form.get("code")).trim().toUpperCase(), name: String(form.get("name")), area: String(form.get("area")), address: String(form.get("address") || ""), contact_name: String(form.get("contactName") || ""), contact_phone: String(form.get("contactPhone") || ""), active: true, created_at: now() };
+    const record: Warehouse = { id: uid(), code: String(form.get("code")).trim().toUpperCase(), name: String(form.get("name")), area: String(form.get("area")), address: String(form.get("address") || ""), longitude: Number(form.get("longitude")) || null, latitude: Number(form.get("latitude")) || null, contact_name: String(form.get("contactName") || ""), contact_phone: String(form.get("contactPhone") || ""), active: true, created_at: now() };
     if (!user) setData((current) => withLocalLog({ ...current, warehouses: [record, ...current.warehouses] }, "新增仓库", "warehouse"));
     else { const { error } = await createClient().from("warehouses").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增仓库", "warehouse"); await load(); }
   }
@@ -392,12 +551,29 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     if (!user) setData((current) => withLocalLog({ ...current, inventoryItems: [record, ...current.inventoryItems] }, "新增物资目录", "inventory_item"));
     else { const { error } = await createClient().from("inventory_items").insert({ ...forInsert(record), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增物资目录", "inventory_item"); await load(); }
   }
+  async function addInventoryBatch(form: FormData) {
+    if (!requireWrite()) return;
+    const batch: InventoryBatch = { id: uid(), warehouse_id: String(form.get("warehouseId")), item_id: String(form.get("itemId")), batch_no: String(form.get("batchNo")), supplier: String(form.get("supplier") || ""), procurement_no: String(form.get("procurementNo") || ""), quantity: Number(form.get("quantity") || 0), expires_at: String(form.get("expiresAt") || "") || null, created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, inventoryBatches: [batch, ...current.inventoryBatches] }, "登记物资采购批次", "inventory_batch"));
+    else { const { error } = await createClient().from("inventory_batches").insert({ ...forInsert(batch), user_id: user.id }); if (error) return setNotice(error.message); await audit("登记物资采购批次", "inventory_batch", undefined, { batchNo: batch.batch_no }); await load(); }
+    setNotice("采购批次及有效期已登记。");
+  }
+  async function addInventoryStocktake(form: FormData) {
+    if (!requireWrite()) return;
+    if (user && role !== "admin") return setNotice("确认盘点和损耗调整仅允许管理员执行。");
+    const warehouseId = String(form.get("warehouseId")); const itemId = String(form.get("itemId")); const balance = data.inventoryBalances.find((item) => item.warehouse_id === warehouseId && item.item_id === itemId); const actual = Number(form.get("actualQuantity"));
+    if (!balance) return setNotice("当前仓库没有该物资账面库存。");
+    const stocktake: InventoryStocktake = { id: uid(), warehouse_id: warehouseId, item_id: itemId, book_quantity: balance.quantity, actual_quantity: actual, loss_quantity: Math.max(balance.quantity - actual, 0), reason: String(form.get("reason") || ""), status: "confirmed", confirmed_by: user?.id || null, confirmed_at: now(), created_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, inventoryStocktakes: [stocktake, ...current.inventoryStocktakes], inventoryBalances: current.inventoryBalances.map((item) => item.id === balance.id ? { ...item, quantity: actual, updated_at: now() } : item) }, "确认库存盘点损耗", "inventory_stocktake", { loss: stocktake.loss_quantity }));
+    else { const supabase = createClient(); const persistedStocktake: Partial<InventoryStocktake> = { ...stocktake }; delete persistedStocktake.loss_quantity; const created = await supabase.from("inventory_stocktakes").insert({ ...forInsert(persistedStocktake), user_id: user.id }); if (created.error) return setNotice(created.error.message); const changed = await supabase.from("inventory_balances").update({ quantity: actual, updated_at: now() }).eq("id", balance.id); if (changed.error) return setNotice(changed.error.message); await audit("确认库存盘点损耗", "inventory_stocktake", undefined, { loss: stocktake.loss_quantity }); await load(); }
+    setNotice(`盘点已确认，账面调整为 ${actual}，损耗 ${stocktake.loss_quantity}。`);
+  }
   async function createInventoryDocument(form: FormData) {
     if (!requireWrite()) return;
     const documentType = String(form.get("documentType")) as InventoryDocument["document_type"];
     const fromWarehouseId = String(form.get("fromWarehouseId") || "") || null; const toWarehouseId = String(form.get("toWarehouseId") || "") || null;
     if ((documentType === "inbound" && !toWarehouseId) || (documentType === "outbound" && !fromWarehouseId) || (documentType === "transfer" && (!fromWarehouseId || !toWarehouseId || fromWarehouseId === toWarehouseId))) return setNotice("请按单据类型正确选择调出/调入仓库。");
-    const document: InventoryDocument = { id: uid(), document_no: `XH-${documentType.toUpperCase()}-${Date.now()}`, document_type: documentType, from_warehouse_id: fromWarehouseId, to_warehouse_id: toWarehouseId, status: "draft", note: String(form.get("note") || ""), created_at: now() };
+    const document: InventoryDocument = { id: uid(), document_no: `XH-${documentType.toUpperCase()}-${Date.now()}`, document_type: documentType, from_warehouse_id: fromWarehouseId, to_warehouse_id: toWarehouseId, status: "draft", note: String(form.get("note") || ""), procurement_no: String(form.get("procurementNo") || ""), recipient_name: String(form.get("recipientName") || ""), created_at: now() };
     const line: InventoryDocumentLine = { id: uid(), document_id: document.id, item_id: String(form.get("itemId")), quantity: Number(form.get("quantity")), created_at: now() };
     if (!user) setData((current) => withLocalLog({ ...current, inventoryDocuments: [document, ...current.inventoryDocuments], inventoryDocumentLines: [line, ...current.inventoryDocumentLines] }, "创建库存单据", "inventory_document", { documentNo: document.document_no }));
     else { const supabase = createClient(); const created = await supabase.from("inventory_documents").insert({ ...forInsert(document), user_id: user.id }).select("id").single(); if (created.error) return setNotice(created.error.message); const lineResult = await supabase.from("inventory_document_lines").insert({ item_id: line.item_id, quantity: line.quantity, document_id: created.data.id }); if (lineResult.error) { await supabase.from("inventory_documents").delete().eq("id", created.data.id); return setNotice(lineResult.error.message); } await audit("创建库存单据", "inventory_document", created.data.id); await load(); }
@@ -568,6 +744,23 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     if (action === "convert") { navigate("plans", eventId || ""); setNotice("告警已转入事件研判并进入预案中心。"); } else setNotice(`告警已${actionName}。`);
   }
 
+  async function addReviewIssue(eventId: string, form: FormData) {
+    if (!requireWrite()) return;
+    const issue: ReviewIssue = { id: uid(), event_id: eventId, title: String(form.get("title")), description: String(form.get("description") || ""), responsible_organization: String(form.get("responsibleOrganization")), responsible_user_id: String(form.get("responsibleUserId") || "") || null, due_at: String(form.get("dueAt") || "") ? new Date(String(form.get("dueAt"))).toISOString() : null, status: "open", verification_note: "", created_at: now(), updated_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, reviewIssues: [issue, ...current.reviewIssues] }, "新增复盘整改问题", "review_issue"));
+    else { const { error } = await createClient().from("review_issues").insert({ ...forInsert(issue), user_id: user.id }); if (error) return setNotice(error.message); await audit("新增复盘整改问题", "review_issue", undefined, { eventId }); await load(); }
+    setNotice("问题已进入整改跟踪。");
+  }
+  async function progressReviewIssue(issue: ReviewIssue, verificationNote = "") {
+    if (!requireWrite()) return;
+    const next: ReviewIssue["status"] = issue.status === "open" ? "rectifying" : issue.status === "rectifying" ? "pending_verification" : "closed";
+    if (next === "closed" && !verificationNote.trim()) return setNotice("销号必须填写复核结论。");
+    const patch = { status: next, verification_note: verificationNote || issue.verification_note, closed_at: next === "closed" ? now() : null, updated_at: now() };
+    if (!user) setData((current) => withLocalLog({ ...current, reviewIssues: current.reviewIssues.map((item) => item.id === issue.id ? { ...item, ...patch } : item) }, "推进整改任务", "review_issue", { status: next }));
+    else { const { error } = await createClient().from("review_issues").update(patch).eq("id", issue.id); if (error) return setNotice(error.message); await audit("推进整改任务", "review_issue", issue.id, { status: next }); await load(); }
+    setNotice(next === "closed" ? "整改已复核销号。" : `整改状态已更新为 ${next}。`);
+  }
+
   async function addRecord(module: ProductModule, form: FormData) {
     if (!requireWrite()) return;
     const record: OperationalRecord = { id: uid(), module, record_type: String(form.get("recordType")), title: String(form.get("title")), status: String(form.get("status") || "正常"), area: String(form.get("area") || ""), owner_org: String(form.get("ownerOrg") || ""), summary: String(form.get("summary") || ""), source_mode: String(form.get("sourceMode") || "real") as OperationalRecord["source_mode"], details: { note: String(form.get("details") || "") }, created_at: now(), updated_at: now() };
@@ -607,7 +800,7 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
   async function disableInvite(invite: TeamInvite) { if (!user || role !== "admin") return; if (!confirmAction(`确认停用邀请码“${invite.label}”？尚未使用的成员将不能再凭此注册。`)) return; const { error } = await createClient().from("team_invites").update({ active: false }).eq("id", invite.id); if (error) return setNotice(error.message); await audit("停用团队邀请码", "team_invite", invite.id); await load(); }
 
   function exportData() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })); a.download = `西湖应急产品数据-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); }
-  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...empty, ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates, resources: parsed.resources || demoResources, warehouses: parsed.warehouses || demoWarehouses, inventoryItems: parsed.inventoryItems || demoInventoryItems, inventoryBalances: parsed.inventoryBalances || demoInventoryBalances, inventoryDocuments: parsed.inventoryDocuments || [], inventoryDocumentLines: parsed.inventoryDocumentLines || [], inventoryMovements: parsed.inventoryMovements || [], riskBatches: parsed.riskBatches || demoRiskBatches, riskChanges: parsed.riskChanges || demoRiskFieldChanges, riskWritebackJobs: parsed.riskWritebackJobs || [], monitoringAssets: parsed.monitoringAssets || demoMonitoringAssets, monitoringReadings: parsed.monitoringReadings || demoMonitoringReadings, monitoringRules: parsed.monitoringRules || demoMonitoringRules, monitoringAlerts: parsed.monitoringAlerts || demoMonitoringAlerts, monitoringActions: parsed.monitoringActions || demoMonitoringActions }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
+  async function importData(file?: File) { if (!file || user) return setNotice("为避免覆盖团队数据，快照导入仅在访客模式开放。"); try { const parsed = JSON.parse(await file.text()) as unknown; if (!isSnapshot(parsed)) throw new Error(); setData({ ...empty, ...parsed, records: parsed.records || [], plans: parsed.plans || demoPlans, planVersions: parsed.planVersions || demoPlanVersions, planTemplates: parsed.planTemplates || demoPlanTaskTemplates, resources: parsed.resources || demoResources, warehouses: parsed.warehouses || demoWarehouses, inventoryItems: parsed.inventoryItems || demoInventoryItems, inventoryBalances: parsed.inventoryBalances || demoInventoryBalances, inventoryDocuments: parsed.inventoryDocuments || [], inventoryDocumentLines: parsed.inventoryDocumentLines || [], inventoryMovements: parsed.inventoryMovements || [], riskBatches: parsed.riskBatches || demoRiskBatches, riskChanges: parsed.riskChanges || demoRiskFieldChanges, riskWritebackJobs: parsed.riskWritebackJobs || [], monitoringAssets: parsed.monitoringAssets || demoMonitoringAssets, monitoringReadings: parsed.monitoringReadings || demoMonitoringReadings, monitoringRules: parsed.monitoringRules || demoMonitoringRules, monitoringAlerts: parsed.monitoringAlerts || demoMonitoringAlerts, monitoringActions: parsed.monitoringActions || demoMonitoringActions, eventParticipants: parsed.eventParticipants || demoEventParticipants, eventUpdates: parsed.eventUpdates || demoEventUpdates, attachments: parsed.attachments || demoBusinessAttachments, taskFeedbacks: parsed.taskFeedbacks || demoTaskFeedbacks, planComments: parsed.planComments || demoPlanComments, resourceDispatches: parsed.resourceDispatches || demoResourceDispatches, inventoryBatches: parsed.inventoryBatches || demoInventoryBatches, inventoryStocktakes: parsed.inventoryStocktakes || demoInventoryStocktakes, reviewIssues: parsed.reviewIssues || demoReviewIssues }); setNotice("快照已导入本机。"); } catch { setNotice("导入失败：文件格式不正确。"); } }
   async function signOut() { if (user) await createClient().auth.signOut(); window.location.assign(urlForPage("portal", window.location.hostname)); }
 
   const stats = useMemo(() => ({ events: data.events.length, executing: data.tasks.filter((item) => item.status !== "已完成").length, resources: data.resources.length, alerts: data.monitoringAlerts.filter((item) => item.status !== "closed").length }), [data]);
@@ -618,17 +811,17 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
   const pageLabel = productPages.find((item) => item.key === page)?.label;
   const activeEvent = data.events.find((item) => item.id === activeEventId);
   const roleLabel = role === "admin" ? "管理员" : role === "member" ? "业务成员" : "只读查看者";
-  return <div className={`shell${isPortal ? " no-sidebar" : ""}${sidebarOpen ? " sidebar-open" : ""}`}><a className="skip-link" href="#main-content">跳到主要内容</a>{!isPortal && <aside aria-label="业务子产品导航"><div className="brand"><LogoMark size={40} outline="#6bc7c6" /><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本地演示"}</b><small>{user?.email || "仅限开发环境"}</small></div></aside>}{!isPortal && sidebarOpen && <button className="sidebar-backdrop" aria-label="关闭导航菜单" onClick={() => setSidebarOpen(false)} />}<main id="main-content"><header><div className="header-left">{!isPortal && <button className="menu-btn" aria-label="切换导航菜单" aria-expanded={sidebarOpen} title="切换导航菜单" onClick={() => setSidebarOpen((open) => !open)}><span /><span /><span /></button>}<span>西湖区应急管理综合平台 / {pageLabel}</span></div><div className="actions">{page !== "portal" && <button onClick={() => navigate("portal")}>返回综合门户</button>}<span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${roleLabel}` : "本地测试模式"}</span>{user && <button onClick={signOut}>安全退出</button>}</div></header><div className="workspace">{notice && <div className="notice" role="status" aria-live="polite"><span>{notice}</span><button aria-label="关闭提示" onClick={() => setNotice("")}>关闭</button></div>}
+  return <div className={`shell${isPortal ? " no-sidebar" : ""}${sidebarOpen ? " sidebar-open" : ""}`}><a className="skip-link" href="#main-content">跳到主要内容</a>{!isPortal && <aside aria-label="业务子产品导航"><div className="brand"><LogoMark size={40} outline="#6bc7c6" /><div><b>西湖应急</b><small>INTEGRATED OPERATIONS</small></div></div><nav>{productPages.filter((item) => item.key !== "admin" || role === "admin").map((item, index) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)} title={item.group}><i>{String(index + 1).padStart(2, "0")}</i>{item.label}</button>)}</nav><div className="aside-foot"><b>{user ? "SUPABASE 云端" : "本地演示"}</b><small>{user?.email || "仅限开发环境"}</small></div></aside>}{!isPortal && sidebarOpen && <button className="sidebar-backdrop" aria-label="关闭导航菜单" onClick={() => setSidebarOpen(false)} />}<main id="main-content"><header><div className="header-left">{!isPortal && <button className="menu-btn" aria-label="切换导航菜单" aria-expanded={sidebarOpen} title="切换导航菜单" onClick={() => setSidebarOpen((open) => !open)}><span /><span /><span /></button>}<span>西湖区应急管理综合平台 / {pageLabel}</span></div><div className="actions">{page !== "portal" && <button onClick={() => navigate("portal")}>返回综合门户</button>}{user && realtimeMessage && <span className="badge live-push" aria-live="polite">{realtimeMessage}</span>}{user && <span className={`badge ${realtimeStatus === "实时在线" ? "" : "orange"}`}>{realtimeStatus}</span>}<span className={user ? "badge" : "badge orange"}>{user ? `云端已连接 · ${roleLabel}` : "本地测试模式"}</span>{user && <button onClick={signOut}>安全退出</button>}</div></header><div className="workspace">{notice && <div className="notice" role="status" aria-live="polite"><span>{notice}</span><button aria-label="关闭提示" onClick={() => setNotice("")}>关闭</button></div>}
     {!isPortal && <EventContextBar event={activeEvent} tasks={data.tasks} plans={data.plans} onNavigate={navigate} onClear={() => navigate(page, "")} />}
     {page === "overview" && <OverviewPage stats={stats} data={data} role={accountActive ? role : "viewer"} onSeed={seed} onExport={exportData} onImport={() => importRef.current?.click()} importRef={importRef} importData={importData} />}
     {page === "portal" && <PortalPage data={data} role={role} currentUserId={user?.id} onOpen={navigate} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
-    {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} events={data.events} activeEventId={activeEventId} writable={writable} admin={role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} />}
-    {page === "command" && <CommandPage currentUserId={user?.id} activeEventId={activeEventId} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onSelectEvent={setActiveEventId} onOpenRelated={navigate} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} />}
-    {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} activeEventId={activeEventId} writable={writable} onAdd={addResource} onStatus={updateResourceStatus} onImport={importResources} onExport={exportResources} />}
-    {page === "inventory" && <InventoryCenterPage warehouses={data.warehouses} items={data.inventoryItems} balances={data.inventoryBalances} documents={data.inventoryDocuments} lines={data.inventoryDocumentLines} writable={writable} admin={!user || role === "admin"} onAddWarehouse={addWarehouse} onAddItem={addInventoryItem} onCreateDocument={createInventoryDocument} onSubmit={submitInventoryDocument} onPost={postInventoryDocument} onImport={importInventory} onExport={exportInventory} />}
+    {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} comments={data.planComments} events={data.events} activeEventId={activeEventId} writable={writable} admin={!user || role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} onUpdateVersion={updatePlanVersion} onAddComment={addPlanComment} onExport={exportPlanDocument} />}
+    {page === "command" && <CommandPage currentUserId={user?.id} activeEventId={activeEventId} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onSelectEvent={setActiveEventId} onOpenRelated={navigate} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} advanced={{ risks: data.risks, resources: data.resources, warehouses: data.warehouses, assets: data.monitoringAssets, alerts: data.monitoringAlerts, participants: data.eventParticipants, updates: data.eventUpdates, attachments: data.attachments, feedbacks: data.taskFeedbacks, dispatches: data.resourceDispatches, admin: !user || role === "admin", onAddParticipant: addEventParticipant, onAddUpdate: addEventUpdate, onDecideUpdate: decideEventUpdate, onUpload: uploadAttachment, onDownload: downloadAttachment, onAddFeedback: addTaskFeedback, onReviewFeedback: reviewTaskFeedback }} />}
+    {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} dispatches={data.resourceDispatches} activeEventId={activeEventId} writable={writable} admin={!user || role === "admin"} onAdd={addResource} onStatus={updateResourceStatus} onCreateDispatch={createResourceDispatch} onProgressDispatch={progressResourceDispatch} onImport={importResources} onExport={exportResources} />}
+    {page === "inventory" && <InventoryCenterPage warehouses={data.warehouses} items={data.inventoryItems} balances={data.inventoryBalances} documents={data.inventoryDocuments} lines={data.inventoryDocumentLines} batches={data.inventoryBatches} stocktakes={data.inventoryStocktakes} writable={writable} admin={!user || role === "admin"} onAddWarehouse={addWarehouse} onAddItem={addInventoryItem} onAddBatch={addInventoryBatch} onAddStocktake={addInventoryStocktake} onCreateDocument={createInventoryDocument} onSubmit={submitInventoryDocument} onPost={postInventoryDocument} onImport={importInventory} onExport={exportInventory} />}
     {page === "risks" && <RiskSurveyCenterPage risks={data.risks} batches={data.riskBatches} changes={data.riskChanges} jobs={data.riskWritebackJobs} profiles={profiles} organizations={organizations} writable={writable} admin={!user || role === "admin"} onAdd={addRisk} onBulkAssign={bulkAssignRisks} onTransition={transitionRisk} onDelete={removeRisk} onImport={importRiskBatch} onExport={exportRiskRows} onRetry={retryRiskWriteback} />}
     {page === "city" && <MonitoringCenterPage domain="city" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}{page === "duty" && <DutyCenterPage {...common} />}
-    {page === "data" && <DataPage {...common} onExport={exportData} />}{page === "reviews" && <ReviewCenterPage {...common} events={data.events} tasks={data.tasks} activeEventId={activeEventId} onSelectEvent={setActiveEventId} />}
+    {page === "data" && <DataPage {...common} onExport={exportData} />}{page === "reviews" && <ReviewCenterPage {...common} events={data.events} tasks={data.tasks} issues={data.reviewIssues} profiles={profiles} activeEventId={activeEventId} onSelectEvent={setActiveEventId} onAddIssue={addReviewIssue} onProgressIssue={progressReviewIssue} />}
     {page === "logs" && <LogsPage logs={data.logs} />}{page === "admin" && role === "admin" && <AdminPage profiles={profiles} organizations={organizations} memberships={memberships} invites={invites} newInviteCode={newInviteCode} onRoleChange={updateProfileRole} onToggleProfile={toggleProfile} onAddOrganization={addOrganization} onAddMembership={addMembership} onCreateInvite={createInvite} onDisableInvite={disableInvite} />}
   </div></main></div>;
 }

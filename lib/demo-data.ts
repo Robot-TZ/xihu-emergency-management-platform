@@ -7,6 +7,9 @@ export const demoEvent: EventRecord = {
   area: "转塘街道",
   happened_at: "2025-09-18T14:30:00+08:00",
   description: "短时强降雨导致道路积水约30厘米，需排涝并转移低洼区域人员。",
+  address: "转塘街道象山路与美院南街交叉口",
+  longitude: 120.078,
+  latitude: 30.159,
   status: "处置中",
   created_at: "2025-09-18T14:30:00+08:00",
 };
@@ -36,4 +39,6 @@ export const demoRisks: RiskRecord[] = [
   source: String(item[3]), change_type: item[4] as RiskRecord["change_type"],
   old_value: String(item[5]), new_value: String(item[6]),
   status: item[7] as RiskRecord["status"], created_at: demoEvent.created_at,
+  longitude: 120.07 + index * 0.03,
+  latitude: 30.16 + index * 0.025,
 }));

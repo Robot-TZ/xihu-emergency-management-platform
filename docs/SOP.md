@@ -61,20 +61,25 @@ flowchart TD
     VERIFY -- 误报 --> CLOSE[关闭并记录原因]
     VERIFY -- 有效 --> EVENT[转入事件研判]
     EVENT --> LEVEL[补充时间、地点、影响<br/>确定事件类型和响应等级]
-    LEVEL --> MATCH[预案中心匹配并显示理由]
+    LEVEL --> DETAIL[登记坐标、附件、参与单位和处置记录]
+    DETAIL --> MATCH[预案中心匹配并显示理由]
     MATCH --> CONFIRM{指挥人员确认}
     CONFIRM -- 调整 --> MATCH
     CONFIRM -- 启动 --> TASKS[按已发布版本生成任务清单]
     TASKS --> DISPATCH[指派人员/组织并关联资源物资]
     DISPATCH --> READ[接收与已读]
-    READ --> FEEDBACK[现场反馈]
-    FEEDBACK --> DONE{处置目标是否达到}
-    DONE -- 否 --> REDO[补充指令/重新调度/升级响应]
+    READ --> FEEDBACK[文字/图片/文件/定位反馈]
+    FEEDBACK --> FVERIFY{反馈复核}
+    FVERIFY -- 退回 --> READ
+    FVERIFY -- 通过 --> DONE{处置目标是否达到}
+    DONE -- 否 --> REDO[续报/补充指令/重新调度/升级响应]
     REDO --> DISPATCH
-    DONE -- 是 --> CHECK[负责人复核]
-    CHECK --> END[事件结案]
-    END --> REVIEW[灾后复盘与改进措施]
-    REVIEW --> ARCHIVE[归档与审计]
+    DONE -- 是 --> CHECK{结案申请审批}
+    CHECK -- 退回 --> REDO
+    CHECK -- 通过 --> END[事件结案]
+    END --> REVIEW[灾后复盘与问题整改]
+    REVIEW --> VERIFYC[复核销号]
+    VERIFYC --> ARCHIVE[归档与审计]
 ```
 
 ### 页面之间的跳转
@@ -84,8 +89,8 @@ flowchart TD
 | 台汛卫士/城市安全“转入事件” | 预案中心 | 创建待研判事件并立即进入预案匹配 | 已实现 |
 | 指挥调度中的既有事件 | 预案中心 | 通过产品导航进入并选择事件进行匹配 | 已实现，尚无事件行内快捷按钮 |
 | 预案中心“人工确认并启动” | 指挥调度 | 按指定预案版本生成任务 | 已实现 |
-| 指挥调度“调配资源” | 应急资源/物资库存 | 推荐队伍、装备和物资，形成调度依据 | 部分实现 |
-| 事件结案 | 灾后复盘 | 汇集时间线、问题和改进措施 | 当前为台账，待自动汇集 |
+| 指挥调度“调配资源” | 应急资源/物资库存 | 推荐队伍、装备和物资，形成调度申请并跟踪到归队 | 已实现，外部车载定位待接入 |
+| 事件结案 | 灾后复盘 | 自动汇集任务时间线，登记问题、整改、复核和销号 | 已实现 |
 
 ### 不允许跳过的控制点
 
@@ -98,14 +103,17 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    DOC[纸面/电子预案] --> EDIT[录入基础信息、类型、等级和关键词]
+    DOC[纸面/电子预案] --> EDIT[在线录入正文、类型、等级和关键词]
     EDIT --> TEMPLATE[配置责任人、资源和任务模板]
     TEMPLATE --> DRAFT[草稿版本]
-    DRAFT --> REVIEW[送审]
+    DRAFT --> DIFF[查看与上一版本修订对比]
+    DIFF --> SIGN[部门会签与审批意见]
+    SIGN --> REVIEW[送审]
     REVIEW --> DECIDE{管理员审核}
     DECIDE -- 退回 --> DRAFT
     DECIDE -- 通过 --> PUB[发布版本]
-    PUB --> MATCH[参与事件匹配]
+    PUB --> EXPORT[导出正式 Word 兼容文档]
+    EXPORT --> MATCH[参与事件匹配]
     MATCH --> START[人工确认启动]
     START --> SNAPSHOT[锁定本次使用的版本]
     SNAPSHOT --> TASK[生成结构化任务]
@@ -152,7 +160,12 @@ flowchart TD
     NEED --> REC[按区域、能力和可用状态推荐资源]
     REC --> HUMAN{调度人员确认}
     HUMAN -- 不合适 --> REC
-    HUMAN -- 确认 --> RES[关联队伍/专家/车辆/装备/场所]
+    HUMAN -- 确认 --> APPLY[提交资源调度申请]
+    APPLY --> APPROVER{管理员审批}
+    APPROVER -- 退回 --> REC
+    APPROVER -- 通过 --> LEAVE[确认出动]
+    LEAVE --> ARRIVE[确认到场]
+    ARRIVE --> RES[执行任务并确认归队]
     RES --> STOCK{是否需要库存物资}
     STOCK -- 否 --> EXEC[进入任务执行]
     STOCK -- 是 --> OUT[创建出库或调拨草稿]
@@ -161,10 +174,31 @@ flowchart TD
     APPROVE -- 通过 --> POST[数据库事务记账]
     POST --> EXEC
     EXEC --> RETURN[归还/退库/消耗确认]
-    RETURN --> BALANCE[更新库存、维保和上下限预警]
+    RETURN --> COUNT[批次/有效期/盘点/损耗确认]
+    COUNT --> BALANCE[更新库存、维保和上下限预警]
 ```
 
-## 6. 异常、降级与外部边界
+## 6. 指挥席位、实时动态与复盘整改
+
+```mermaid
+flowchart LR
+    RT[(Supabase Realtime)] --> PUSH[事件/告警/任务/反馈/调度/整改自动刷新]
+    PUSH --> DUTY[值班席<br/>全过程操作与现场反馈复核]
+    PUSH --> LEADER[领导席<br/>多事件摘要与关键态势]
+    PUSH --> DEPT[部门席<br/>本部门协同处置]
+    DUTY & LEADER & DEPT --> MAP[事件态势一张图/大屏模式]
+    MAP --> TIMELINE[事件、指令、续报和资源实时动态]
+    TIMELINE --> REVIEW[事件复盘]
+    REVIEW --> ISSUE[建立问题与整改任务]
+    ISSUE --> RECTIFY[责任单位按期限整改]
+    RECTIFY --> VERIFY{提交复核}
+    VERIFY -- 退回 --> RECTIFY
+    VERIFY -- 通过并填写结论 --> CLOSE[销号归档]
+```
+
+当前实时能力是已登录用户之间的数据库变更推送和自动刷新。短信、电话、浙政钉待办、真实车辆轨迹和硬件告警推送仍需对应服务和甲方接口，不能以页面实时刷新代替正式送达验收。
+
+## 7. 异常、降级与外部边界
 
 | 场景 | 处理要求 |
 | --- | --- |
@@ -176,7 +210,7 @@ flowchart TD
 | 权限不足或账号停用 | 数据库层拒绝访问并记录必要的安全日志 |
 | 外部系统接入 | 必须先完成授权、字段/编码映射、安全认证、联调、异常演练和验收 |
 
-## 7. 正式交付门槛
+## 8. 正式交付门槛
 
 以下工作不属于“画完页面即可完成”，必须由采购人、原系统厂商、云和测评单位共同配合：
 

@@ -53,6 +53,11 @@ export type EventRecord = {
   plan_id?: string | null;
   emergency_plan_id?: string | null;
   plan_version_id?: string | null;
+  address?: string;
+  longitude?: number | null;
+  latitude?: number | null;
+  ended_at?: string | null;
+  closed_at?: string | null;
   created_at: string;
 };
 export type TaskRecord = {
@@ -74,8 +79,17 @@ export type TaskRecord = {
   read_at?: string | null;
   feedback_at?: string | null;
   completed_at?: string | null;
+  review_status?: "pending" | "approved" | "returned";
+  feedback_longitude?: number | null;
+  feedback_latitude?: number | null;
+  returned_reason?: string;
   created_at: string;
 };
+
+export type EventParticipant = { id: string; event_id: string; organization_id?: string | null; organization_name: string; responsibility: string; contact_name: string; contact_phone: string; user_id?: string; created_at: string };
+export type EventUpdate = { id: string; event_id: string; update_type: "处置记录" | "续报" | "状态变更" | "审批申请" | "审批意见"; title: string; content: string; from_level: string; to_level: string; approval_status: "not_required" | "pending" | "approved" | "rejected"; longitude?: number | null; latitude?: number | null; user_id?: string; created_at: string };
+export type BusinessAttachment = { id: string; entity_type: "event" | "task" | "plan" | "review"; entity_id: string; file_name: string; storage_path: string; mime_type: string; file_size: number; category: string; user_id?: string; created_at: string };
+export type TaskFeedback = { id: string; task_id: string; feedback_type: "现场反馈" | "补充说明" | "审核意见" | "退回说明"; content: string; longitude?: number | null; latitude?: number | null; user_id?: string; created_at: string };
 export type RiskRecord = {
   id: string;
   user_id?: string;
@@ -96,6 +110,8 @@ export type RiskRecord = {
   source_record_id?: string;
   rejection_reason?: string;
   confirmed_at?: string | null;
+  longitude?: number | null;
+  latitude?: number | null;
   created_at: string;
 };
 
@@ -132,6 +148,8 @@ export type Warehouse = {
   contact_name: string;
   contact_phone: string;
   active: boolean;
+  longitude?: number | null;
+  latitude?: number | null;
   created_at: string;
 };
 
@@ -170,8 +188,13 @@ export type InventoryDocument = {
   approved_by?: string | null;
   approved_at?: string | null;
   cancelled_at?: string | null;
+  procurement_no?: string;
+  recipient_name?: string;
   created_at: string;
 };
+
+export type InventoryBatch = { id: string; warehouse_id: string; item_id: string; batch_no: string; supplier: string; procurement_no: string; quantity: number; expires_at?: string | null; user_id?: string; created_at: string };
+export type InventoryStocktake = { id: string; warehouse_id: string; item_id: string; book_quantity: number; actual_quantity: number; loss_quantity: number; reason: string; status: "draft" | "confirmed"; user_id?: string; confirmed_by?: string | null; confirmed_at?: string | null; created_at: string };
 
 export type InventoryDocumentLine = {
   id: string;
@@ -359,6 +382,12 @@ export type PlanTaskTemplate = {
   sort_order: number;
   created_at: string;
 };
+
+export type PlanReviewComment = { id: string; version_id: string; comment_type: "会签意见" | "审批意见" | "退回意见"; organization_name: string; content: string; decision: "comment" | "agree" | "reject"; user_id?: string; created_at: string };
+
+export type ResourceDispatch = { id: string; event_id: string; resource_id: string; request_note: string; status: "requested" | "approved" | "rejected" | "dispatched" | "arrived" | "returned"; user_id?: string; requested_by?: string; approved_by?: string | null; requested_at: string; approved_at?: string | null; dispatched_at?: string | null; arrived_at?: string | null; returned_at?: string | null; updated_at: string };
+
+export type ReviewIssue = { id: string; event_id: string; title: string; description: string; responsible_organization: string; responsible_user_id?: string | null; due_at?: string | null; status: "open" | "rectifying" | "pending_verification" | "closed"; verification_note: string; user_id?: string; closed_at?: string | null; created_at: string; updated_at: string };
 
 export type ProductModule =
   | "plans" | "resources" | "inventory" | "duty" | "monitoring"
