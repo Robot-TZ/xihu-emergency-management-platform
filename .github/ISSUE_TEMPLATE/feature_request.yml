@@ -1,0 +1,52 @@
+name: 功能建议
+description: 提出有明确用户、场景和验收标准的改进建议
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 谁在什么情况下遇到什么问题？
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: 主要使用角色
+      options:
+        - 只读查看者 viewer
+        - 业务成员 member
+        - 平台管理员 admin
+        - 值班席
+        - 领导席
+        - 部门席
+        - 外部接口或运维人员
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 描述期望操作路径、输入、输出和异常情况。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      placeholder: |
+        - 当……时，系统应……
+        - viewer 不得……
+        - 刷新后数据仍应……
+    validations:
+      required: true
+  - type: checkboxes
+    id: dependencies
+    attributes:
+      label: 可能涉及
+      options:
+        - label: 数据库或 RLS
+        - label: 浙政钉、IRS、数据仓、物联网、短信、语音等外部接口
+        - label: 地图、域名、Vercel、Cloudflare 或其他第三方服务
+        - label: 标书覆盖范围或正式验收要求
