@@ -19,6 +19,7 @@ import { DataPage, LogsPage, OverviewPage, PortalPage } from "./product-pages";
 import { LogoMark } from "./logo-mark";
 import { AdminPage, CommandPage } from "./workflow-pages";
 import { PlanCenterPage, type PlanLifecycleAction } from "./plan-center";
+import type { GeneratedPlanDraft } from "@/lib/plan-drafting";
 import { InventoryCenterPage, ResourceCenterPage } from "./resource-inventory-center";
 import { RiskSurveyCenterPage } from "./risk-survey-center";
 import { MonitoringCenterPage } from "./monitoring-center";
@@ -447,13 +448,23 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     setNotice(action === "submit" ? "已送审，等待管理员审核。" : action === "publish" ? "新版本已发布，旧版本已归档。" : action === "copy" ? "已复制为新草稿版本。" : "预案已作废。");
   }
 
-  async function updatePlanVersion(version: PlanVersion, form: FormData) {
-    if (!requireWrite()) return;
-    if (version.status !== "draft") return setNotice("只有草稿版本允许在线编辑，请先复制为新版本。");
+  async function updatePlanVersion(version: PlanVersion, form: FormData, auditAction = "在线编辑预案版本") {
+    if (!requireWrite()) return false;
+    if (version.status !== "draft") { setNotice("只有草稿版本允许在线编辑，请先复制为新版本。"); return false; }
     const patch = { summary: String(form.get("summary")), content: String(form.get("content")), response_levels: String(form.get("levels") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), keywords: String(form.get("keywords") || "").split(/[,，]/).map((item) => item.trim()).filter(Boolean), updated_at: now() };
-    if (!user) setData((current) => withLocalLog({ ...current, planVersions: current.planVersions.map((item) => item.id === version.id ? { ...item, ...patch } : item) }, "在线编辑预案版本", "plan_version"));
-    else { const { error } = await createClient().from("plan_versions").update(patch).eq("id", version.id); if (error) return setNotice(error.message); await audit("在线编辑预案版本", "plan_version", version.id); await load(); }
+    if (!user) setData((current) => withLocalLog({ ...current, planVersions: current.planVersions.map((item) => item.id === version.id ? { ...item, ...patch } : item) }, auditAction, "plan_version"));
+    else { const { error } = await createClient().from("plan_versions").update(patch).eq("id", version.id); if (error) { setNotice(error.message); return false; } await audit(auditAction, "plan_version", version.id); await load(); }
     setNotice("预案草稿已保存，修订对比已更新。");
+    return true;
+  }
+
+  async function applyAiPlanDraft(version: PlanVersion, draft: GeneratedPlanDraft) {
+    const form = new FormData();
+    form.set("summary", draft.summary);
+    form.set("content", draft.content);
+    form.set("levels", draft.responseLevels.join(","));
+    form.set("keywords", draft.keywords.join(","));
+    return updatePlanVersion(version, form, "人工确认并保存 AI 预案初稿");
   }
 
   async function addPlanComment(version: PlanVersion, form: FormData) {
@@ -815,7 +826,7 @@ export function EmergencyApp({ initialPage = "portal", initialEventId, allowGues
     {!isPortal && <EventContextBar event={activeEvent} tasks={data.tasks} plans={data.plans} onNavigate={navigate} onClear={() => navigate(page, "")} />}
     {page === "overview" && <OverviewPage stats={stats} data={data} role={accountActive ? role : "viewer"} onSeed={seed} onExport={exportData} onImport={() => importRef.current?.click()} importRef={importRef} importData={importData} />}
     {page === "portal" && <PortalPage data={data} role={role} currentUserId={user?.id} onOpen={navigate} />}{page === "typhoon" && <MonitoringCenterPage domain="typhoon" assets={data.monitoringAssets} readings={data.monitoringReadings} rules={data.monitoringRules} alerts={data.monitoringAlerts} actions={data.monitoringActions} writable={writable} onAddAsset={addMonitoringAsset} onAddRule={addMonitoringRule} onIngest={ingestMonitoringReading} onAlertAction={transitionMonitoringAlert} />}
-    {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} comments={data.planComments} events={data.events} activeEventId={activeEventId} writable={writable} admin={!user || role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} onUpdateVersion={updatePlanVersion} onAddComment={addPlanComment} onExport={exportPlanDocument} />}
+    {page === "plans" && <PlanCenterPage plans={data.plans} versions={data.planVersions} templates={data.planTemplates} comments={data.planComments} events={data.events} activeEventId={activeEventId} writable={writable} admin={!user || role === "admin"} onAdd={addPlan} onLifecycle={transitionPlan} onDelete={removePlan} onStart={startPlan} onUpdateVersion={updatePlanVersion} onApplyAiDraft={applyAiPlanDraft} onAddComment={addPlanComment} onExport={exportPlanDocument} />}
     {page === "command" && <CommandPage currentUserId={user?.id} activeEventId={activeEventId} events={data.events} tasks={data.tasks} profiles={profiles} organizations={organizations} writable={writable} onSelectEvent={setActiveEventId} onOpenRelated={navigate} onAddEvent={addEvent} onProgressEvent={progressEvent} onDeleteEvent={removeEvent} onAddTask={addTask} onProgressTask={progressTask} onDeleteTask={removeTask} advanced={{ risks: data.risks, resources: data.resources, warehouses: data.warehouses, assets: data.monitoringAssets, alerts: data.monitoringAlerts, participants: data.eventParticipants, updates: data.eventUpdates, attachments: data.attachments, feedbacks: data.taskFeedbacks, dispatches: data.resourceDispatches, admin: !user || role === "admin", onAddParticipant: addEventParticipant, onAddUpdate: addEventUpdate, onDecideUpdate: decideEventUpdate, onUpload: uploadAttachment, onDownload: downloadAttachment, onAddFeedback: addTaskFeedback, onReviewFeedback: reviewTaskFeedback }} />}
     {page === "resources" && <ResourceCenterPage resources={data.resources} events={data.events} dispatches={data.resourceDispatches} activeEventId={activeEventId} writable={writable} admin={!user || role === "admin"} onAdd={addResource} onStatus={updateResourceStatus} onCreateDispatch={createResourceDispatch} onProgressDispatch={progressResourceDispatch} onImport={importResources} onExport={exportResources} />}
     {page === "inventory" && <InventoryCenterPage warehouses={data.warehouses} items={data.inventoryItems} balances={data.inventoryBalances} documents={data.inventoryDocuments} lines={data.inventoryDocumentLines} batches={data.inventoryBatches} stocktakes={data.inventoryStocktakes} writable={writable} admin={!user || role === "admin"} onAddWarehouse={addWarehouse} onAddItem={addInventoryItem} onAddBatch={addInventoryBatch} onAddStocktake={addInventoryStocktake} onCreateDocument={createInventoryDocument} onSubmit={submitInventoryDocument} onPost={postInventoryDocument} onImport={importInventory} onExport={exportInventory} />}

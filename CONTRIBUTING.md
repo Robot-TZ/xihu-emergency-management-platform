@@ -56,9 +56,11 @@ pnpm dev
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 NEXT_PUBLIC_TMAP_KEY=
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-flash
 ```
 
-`NEXT_PUBLIC_*` 会进入浏览器。这里只能使用 Supabase Publishable Key 和允许前端使用的地图 Key；禁止提交 `service_role`、secret key、个人访问令牌、数据库密码或真实邀请码。
+`NEXT_PUBLIC_*` 会进入浏览器。这里只能使用 Supabase Publishable Key 和允许前端使用的地图 Key；`DEEPSEEK_API_KEY` 必须仅存在于本地或部署平台的加密服务端环境变量中，严禁添加 `NEXT_PUBLIC_` 前缀。禁止提交 `service_role`、任何 secret key、个人访问令牌、数据库密码或真实邀请码。
 
 ## 4. 分支和提交
 

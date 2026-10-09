@@ -89,6 +89,29 @@ test("professional plan center explains scoring and starts versioned task templa
   await expect(page.getByRole("row").filter({ hasText: "排涝作业" }).filter({ hasText: "属地应急队" })).toBeVisible();
 });
 
+test("AI plan assistant keeps generation editable and saves only after operator review", async ({ page }) => {
+  await page.route("**/api/ai/plan-draft", async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ draft: { summary: "AI 初稿摘要", content: "一、适用范围\n【待核实】", responseLevels: ["II级"], keywords: ["强降雨"] }, model: "deepseek-flash", totalTokens: 321 }),
+  }));
+  await gotoModule(page, /预案中心/);
+  const createForm = page.getByRole("heading", { name: "新建预案草稿" }).locator("..");
+  await createForm.getByLabel("预案编码").fill("XH-YA-AI-001");
+  await createForm.getByLabel("预案名称").fill("AI 起草测试预案");
+  await createForm.getByLabel("预案摘要").fill("基础摘要");
+  await createForm.getByLabel("处置要点").fill("基础正文");
+  await createForm.getByRole("button", { name: "创建草稿及 V1 版本" }).click();
+  const assistant = page.getByRole("region", { name: "AI 预案初稿助手" });
+  await assistant.getByLabel(/我确认上述资料/).check();
+  await assistant.getByRole("button", { name: "生成预案初稿" }).click();
+  await expect(assistant.getByLabel("预案摘要")).toHaveValue("AI 初稿摘要");
+  await assistant.getByLabel("预案摘要").fill("操作员复核后的摘要");
+  await assistant.getByRole("button", { name: "保存人工修订稿" }).click();
+  await expect(page.getByText("人工修改后的内容已保存到当前草稿；仍需按原流程送审和发布。")).toBeVisible();
+  await expect(page.getByText("操作员复核后的摘要").first()).toBeVisible();
+});
+
 test("resource center recommends dispatch candidates with explainable evidence", async ({ page }) => {
   await page.getByRole("button", { name: "初始化产品数据" }).click();
   await gotoModule(page, /应急资源/);
