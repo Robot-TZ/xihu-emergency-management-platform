@@ -8,5 +8,6 @@ supabase/.temp/
 playwright-report/
 test-results/
 coverage/
+recordings/
 tsconfig.tsbuildinfo
 .DS_Store
