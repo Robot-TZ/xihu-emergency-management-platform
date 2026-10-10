@@ -73,7 +73,16 @@
 
 事件处置、预案数字化、风险数据治理和资源库存保障流程见 [SOP 流程图](docs/SOP.md)。标书原文的产品化转译、逐项覆盖情况和正式交付缺口见 [标书需求覆盖矩阵](docs/TENDER-COVERAGE.md)。
 
+第一次使用 Supabase、Vercel 或准备继续开发本项目的同学，请阅读 [Supabase 与 Vercel 新手协作指南](docs/SUPABASE-VERCEL-GUIDE.md)。指南包含控制台位置、代码与数据表对应关系、环境变量、RLS、Storage、Realtime、域名、自动部署和常见改动步骤。
+
 ## 三、更新日志
+
+### 2026-10-10 · Supabase 与 Vercel 新手协作指南
+
+- 新增面向零基础协作者的 Supabase/Vercel 项目手册，解释 GitHub、Supabase、Vercel 和 Cloudflare 在当前架构中的分工；
+- 建立业务页面、React 组件、数据表、migration、环境变量、子域名和部署控制台的定位索引；
+- 补充本地启动、数据库字段/新表修改、RLS、私有附件、Realtime、第三方 API、PR 与生产部署的标准流程；
+- 增加免费 Supabase 项目暂停、Vercel 环境差异、DNS、自定义域名、邀请码不可反查等常见问题排查。
 
 ### 2026-10-09 · AI 预案初稿助手
 
